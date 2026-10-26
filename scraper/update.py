@@ -193,9 +193,9 @@ def base_record(d, stops):
     url = a.get("website-full-url") or ("https://www.realestate.co.nz" + (a.get("website-slug") or f"/{d['id']}"))
     return {
         "id": d["id"],
-        "addr": street,
-        "sub": suburb,
-        "full": ad.get("full-address") or disp,
+        "addr": street.strip(),
+        "sub": suburb.strip(),
+        "full": (ad.get("full-address") or disp).strip(),
         "lat": round(lat, 6),
         "lng": round(lng, 6),
         "beds": a.get("bedroom-count") or 0,
@@ -234,7 +234,9 @@ def enrich(rec):
         try:
             p = get(f"/properties/{rec['_sid']}")
             ev = ((p.get("data") or {}).get("attributes") or {}).get("estimated-value")
-            if ev and ev.get("value-mid"):
+            ok = ev and ev.get("value-mid") and (ev.get("confidence-rating") or 0) >= 3 \
+                and PRICE_MIN * 0.7 <= ev["value-mid"] <= PRICE_MAX * 2
+            if ok:  # far-off values usually come from a mismatched property record
                 rec["est"] = [ev.get("value-low"), ev.get("value-mid"), ev.get("value-high"), ev.get("confidence-rating")]
         except Exception as e:  # noqa: BLE001
             print("estimate failed", rec["id"], e, file=sys.stderr)

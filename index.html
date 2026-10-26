@@ -341,13 +341,16 @@ footer p { margin: 0; max-width: 70ch; }
   const dateFmt = new Intl.DateTimeFormat('en-NZ', { weekday: 'short', day: 'numeric', month: 'short', timeZone: NZTZ });
   const dayFmt = new Intl.DateTimeFormat('en-NZ', { day: 'numeric', month: 'short', timeZone: NZTZ });
   const timeFmt = new Intl.DateTimeFormat('en-NZ', { hour: 'numeric', minute: '2-digit', timeZone: NZTZ });
-  const plainDate = (s) => s ? dayFmt.format(new Date(s + 'T12:00:00+13:00')) : '';
+  const yearFmt = new Intl.DateTimeFormat('en-NZ', { day: 'numeric', month: 'short', year: 'numeric', timeZone: NZTZ });
+  const plainDate = (s) => { if (!s) return ''; const d = new Date(s + 'T12:00:00+13:00'); return (d.getFullYear() === new Date().getFullYear() ? dayFmt : yearFmt).format(d); };
   const when = (s) => { if (!s) return ''; const d = new Date(s); return `${dateFmt.format(d)}, ${timeFmt.format(d).replace(' ', ' ')}`; };
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
   const status = (h) => favs.has(h.id) ? 'fav' : h.removed ? 'gone' : h.first === data.updated ? 'new' : 'old';
   const kind = (h) => h.removed ? 'gone' : h.first === data.updated ? 'new' : 'old';
   const visible = (h) => show[status(h)];
+  // Estimates far outside the search range usually come from a mismatched property record (a lot or a whole site).
+  const okEst = (e) => Array.isArray(e) && e[1] && (e[3] ?? 5) >= 3 && e[1] >= 630000 && e[1] <= 3000000;
   const priceVal = (h) => h.priceNum || (h.est ? h.est[1] : null);
   const method = (h) => { const m = h.method || ''; return /^[A-Z]{2,}$/.test(m) ? m : m.charAt(0).toUpperCase() + m.slice(1).toLowerCase(); };
 
@@ -413,10 +416,11 @@ footer p { margin: 0; max-width: 70ch; }
     dotLayer.clearLayers();
     const colors = { new: css('--new'), old: css('--old'), fav: css('--fav'), gone: css('--gone') };
     const stroke = css('--surface');
+    const z = map.getZoom(), base = z <= 10 ? 3.5 : z <= 11 ? 4.5 : 5.5;
     houses.filter(visible).sort((a, b) => order[status(a)] - order[status(b)]).forEach((h) => {
       const st = status(h);
       L.circleMarker([h.lat, h.lng], {
-        renderer: canvas, radius: st === 'fav' ? 7 : st === 'gone' ? 4 : 5.5, color: stroke, weight: 1.5,
+        renderer: canvas, radius: base + (st === 'fav' ? 1.5 : st === 'gone' ? -1 : 0), color: stroke, weight: 1.2,
         fillColor: colors[st], fillOpacity: st === 'gone' ? .7 : 1,
       }).on('click', () => openSheet(h.id)).addTo(dotLayer);
     });
@@ -443,7 +447,8 @@ footer p { margin: 0; max-width: 70ch; }
       }).on('click', () => openSheet(h.id)).addTo(pinLayer);
     });
   }
-  map.on('moveend zoomend', drawPins);
+  map.on('moveend', drawPins);
+  map.on('zoomend', () => { if (houses.length) drawDots(); });
 
   // ---------- header ----------
   function renderCounts() {
@@ -652,7 +657,9 @@ footer p { margin: 0; max-width: 70ch; }
     fetch('data/houses.json', { cache: 'no-cache' }).then((r) => r.ok ? r.json() : { houses: [] }).catch(() => ({ houses: [] })),
   ]).then(([routes, d]) => {
     drawRoutes(routes);
-    data = d; houses = d.houses || []; byId = new Map(houses.map((h) => [h.id, h]));
+    data = d; houses = d.houses || [];
+    houses.forEach((h) => { h.addr = (h.addr || '').trim(); h.full = (h.full || '').trim(); if (!okEst(h.est)) h.est = null; });
+    byId = new Map(houses.map((h) => [h.id, h]));
     for (const id of [...favs]) if (!byId.has(id)) favs.delete(id);
     $('stamp').textContent = d.updated
       ? `Updated ${dateFmt.format(new Date(d.updated + 'T20:00:00+13:00'))} · ${d.active.toLocaleString('en-NZ')} for sale`
@@ -660,7 +667,7 @@ footer p { margin: 0; max-width: 70ch; }
     renderAll();
     const m = location.hash.match(/^#h(\d+)$/);
     if (m && byId.has(m[1])) openSheet(m[1], true);
-    (window.requestIdleCallback || setTimeout)(loadPhotos, 1500);
+    if (window.requestIdleCallback) requestIdleCallback(loadPhotos, { timeout: 3000 }); else setTimeout(loadPhotos, 1500);
   });
 })();
 </script>
