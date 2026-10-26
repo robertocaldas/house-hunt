@@ -163,6 +163,7 @@ def update_route_paths(routes):
 
 
 NOMINATIM = "https://nominatim.openstreetmap.org/reverse"
+ADDR_VERSION = 2
 STREETISH = re.compile(r"^\d+[A-Za-z]?\s+\D+\b(Road|Rd|Street|St|Avenue|Ave|Drive|Dr|Place|Pl|Lane|Ln|Crescent|Cres|Terrace|"
                        r"Tce|Way|Grove|Highway|Hwy|Parade|Rise|Close|Court|Track|Loop|Parkway)$", re.I)
 
@@ -184,6 +185,8 @@ def reverse_geocode(lat, lng):
 def update_stop_addresses(routes, budget_s=900):
     """Street address for every stop (OpenStreetMap reverse geocoding, cached)."""
     addrs = load("stop_addresses.json", {})
+    if addrs.get("_v") != ADDR_VERSION:
+        addrs = {"_v": ADDR_VERSION}
     todo, seen = [], set()
     for r in routes:
         for g in ("am",):
@@ -207,10 +210,11 @@ def update_stop_addresses(routes, budget_s=900):
             time.sleep(2)
             continue
         street = name if STREETISH.match(name) else " ".join(x for x in (a.get("house_number"), a.get("road")) if x)
-        area = a.get("suburb") or a.get("neighbourhood") or a.get("city_district") or a.get("hamlet") or ""
-        town = a.get("city") or a.get("town") or a.get("village") or "Auckland"
-        tail = " ".join(x for x in (town, a.get("postcode")) if x)
-        parts = [street or name, area if area and area != town else "", tail]
+        # OSM puts Auckland's local board (e.g. "Upper Harbour") in city; NZ addresses use suburb/town + Auckland.
+        area = (a.get("suburb") or a.get("neighbourhood") or a.get("town") or a.get("village")
+                or a.get("hamlet") or a.get("city_district") or "")
+        tail = " ".join(x for x in ("Auckland", a.get("postcode")) if x)
+        parts = [street or name, area, tail]
         addrs[k] = ", ".join(x for x in parts if x)
         time.sleep(1.1)  # Nominatim usage policy: max 1 request per second
     save("stop_addresses.json", addrs)
