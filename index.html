@@ -628,12 +628,13 @@ footer p { margin: 0; max-width: 70ch; }
       fact('Bedrooms', h.beds ? String(h.beds) : ''),
       fact('Floor area', h.floor ? `${h.floor.toLocaleString('en-NZ')} m²` : '—'),
       fact('Land', h.land ? `${h.land.toLocaleString('en-NZ')} m²` : '—'),
+      fact('Built', h.newBuild ? 'New build' : h.built ? `${h.built}s` : '—'),
+      fact('Listed', plainDate(h.listed)),
       fact('Suburb prices', (() => { const t = trendOf(h); if (!t) return ''; if (!t.dir) return '<span class="muted">Not enough sales to tell</span>'; return `${trendBadge(h)} <span class="muted" style="font-weight:400">median sale price over 12 months · ${money(t.prev)} → ${money(t.cur)} · ${esc(t.basis)}, ${t.n} sold</span>`; })(), true),
       fact('Sale type', saleType, true),
       fact('Address', esc(h.full), true),
       fact('Nearest bus stop', h.stop ? `${h.dist.toFixed(1)} km · ${esc(h.stop)} (${esc(h.route)})` : '', true),
-      fact('Property', esc([h.type, h.baths ? `${h.baths} bath` : ''].filter(Boolean).join(' · '))),
-      fact('Listed', plainDate(h.listed)),
+      fact('Property', esc([h.type, h.baths ? `${h.baths} bath` : ''].filter(Boolean).join(' · ')), true),
     ].join('');
     $('d-open').href = h.url;
     $('d-star').setAttribute('aria-pressed', String(favs.has(h.id)));

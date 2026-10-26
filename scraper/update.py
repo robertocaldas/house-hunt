@@ -352,6 +352,7 @@ def base_record(d, stops):
         "dist": round(dist, 2),
         "route": stop[2] if stop else None,
         "stop": stop[3] if stop else None,
+        "newBuild": bool(a.get("is-new-construction")),
         "subSlug": ad.get("suburb-display-fq-slug") or "_".join((ad.get("suburb-fq-slug") or "").split("_")[:3]),
         "listed": (a.get("published-date") or "")[:10],
         "_sid": a.get("property-short-id"),
@@ -361,7 +362,7 @@ def base_record(d, stops):
 
 def fetch_valuation(sid, today):
     """realestate.co.nz estimate and latest council valuation for a property."""
-    v = {"e": None, "cv": None, "t": today}
+    v = {"e": None, "cv": None, "age": 0, "t": today}
     if not sid:
         return v
     try:
@@ -370,6 +371,7 @@ def fetch_valuation(sid, today):
         print("valuation failed", sid, e, file=sys.stderr)
         v["t"] = None  # retry next run
         return v
+    v["age"] = attrs.get("building-age") or 0  # decade of construction, e.g. 1980; 0 = unknown
     ev = attrs.get("estimated-value") or {}
     if ev.get("value-mid"):
         v["e"] = [ev.get("value-low"), ev.get("value-mid"), ev.get("value-high"), ev.get("confidence-rating")]
@@ -567,6 +569,16 @@ def main():
 
     added = [lid for lid in current if lid not in known]
     print(f"{len(current)} matching houses, {len(added)} new")
+
+    # Decade of construction comes with the property record (also fetched for priced listings).
+    need = [lid for lid in current if "age" not in (vals.get(lid) or {})]
+    print(f"fetching {len(need)} property records for build decade")
+    with ThreadPoolExecutor(WORKERS) as ex:
+        for lid, v in zip(need, ex.map(lambda l: fetch_valuation(current[l]["_sid"], today), need)):
+            if v.get("t"):
+                vals[lid] = v
+    for lid, rec in current.items():
+        rec["built"] = (vals.get(lid) or {}).get("age") or None
 
     save("valuations.json", {k: v for k, v in vals.items() if k in near})
     save("titles.json", {k: v for k, v in titles.items() if k in near})
