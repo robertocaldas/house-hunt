@@ -31,7 +31,6 @@ DATA = os.path.join(ROOT, "data")
 API = "https://platform.realestate.co.nz/search/v1"
 OSRM = "https://router.project-osrm.org/route/v1/driving/"
 OSRM_TABLE = "https://router.project-osrm.org/table/v1/driving/"
-ROAD_CANDIDATES = 12   # nearest stops (straight line) checked by road for each house
 TABLE_MAX = 90         # coordinates per OSRM table request
 NZ = ZoneInfo("Pacific/Auckland")
 SCHEMA = 5  # bump when the matching rules change: non-matching houses are dropped, not greyed
@@ -246,7 +245,7 @@ def road_distances(cands, ustops, cache):
     RADIUS_KM straight-line are candidates. Returns {lid: {"d", "s", "r"}}; a
     house missing from the result could not be checked this run.
     """
-    skey = hashlib.md5(json.dumps([s[:2] for s in ustops]).encode()).hexdigest()[:8]
+    skey = "all-" + hashlib.md5(json.dumps([s[:2] for s in ustops]).encode()).hexdigest()[:8]
     out, todo = {}, []
     for lid, rec in cands.items():
         k = f"{skey}:{rec['lat']:.5f},{rec['lng']:.5f}"
@@ -255,7 +254,7 @@ def road_distances(cands, ustops, cache):
             out[lid] = c
             continue
         near = sorted((hav(rec["lat"], rec["lng"], s[0], s[1]), i) for i, s in enumerate(ustops))
-        cand = [i for d, i in near[:ROAD_CANDIDATES] if d <= RADIUS_KM]
+        cand = [i for d, i in near if d <= RADIUS_KM]  # every stop that could be within reach by road
         if not cand:
             out[lid] = cache[lid] = {"k": k, "d": None, "s": None, "r": None}
             continue
