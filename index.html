@@ -259,7 +259,7 @@ footer p { margin: 0; max-width: 70ch; }
 <section class="list wrap" aria-labelledby="list-title">
   <div class="list-head">
     <h2 id="list-title">Houses</h2>
-    <p id="list-sub">4+ bedrooms · no townhouses · $900k–$1.5M · within 3 km of a Kristin bus stop</p>
+    <p id="list-sub">4+ bedrooms · no townhouses · $900k–$1.5M · within 3 km drive of a Kristin bus stop</p>
   </div>
   <div class="table-scroll">
     <table id="tbl">
@@ -279,7 +279,7 @@ footer p { margin: 0; max-width: 70ch; }
 </section>
 
 <footer class="wrap">
-  <p>Listings from realestate.co.nz, searched daily at 8pm NZ time. The $900k–$1.5M range is checked against the advertised price; without one, against the realestate.co.nz estimate (grey, “est”); without that, against the council valuation (grey, “CV”). Listings with none of these are left out. Distance is straight-line to the nearest morning (to-school) stop, and Kristin School counts as a stop. Dashed route lines are the non-stop run to school. Suburb arrows compare the median sale price of the last 12 months with the 12 months before (4+ bedroom sales when there are enough, otherwise all sales); within ±2% counts as flat. Favourites are saved on this device.</p>
+  <p>Listings from realestate.co.nz, searched daily at 8pm NZ time. The $900k–$1.5M range is checked against the advertised price; without one, against the realestate.co.nz estimate (grey, “est”); without that, against the council valuation (grey, “CV”). Listings with none of these are left out. Distance is the driving distance by road to the nearest morning (to-school) stop, and Kristin School counts as a stop. Dashed route lines are the non-stop run to school. Suburb arrows compare the median sale price of the last 12 months with the 12 months before (4+ bedroom sales when there are enough, otherwise all sales); within ±2% counts as flat. Favourites are saved on this device.</p>
 </footer>
 
 <div class="scrim" id="scrim" hidden></div>
@@ -633,7 +633,7 @@ footer p { margin: 0; max-width: 70ch; }
       fact('Suburb prices', (() => { const t = trendOf(h); if (!t) return ''; if (!t.dir) return '<span class="muted">Not enough sales to tell</span>'; return `${trendBadge(h)} <span class="muted" style="font-weight:400">median sale price over 12 months · ${money(t.prev)} → ${money(t.cur)} · ${esc(t.basis)}, ${t.n} sold</span>`; })(), true),
       fact('Sale type', saleType, true),
       fact('Address', esc(h.full), true),
-      fact('Nearest bus stop', h.stop ? `${h.dist.toFixed(1)} km · ${esc(h.stop)} (${esc(h.route)})` : '', true),
+      fact('Nearest bus stop', h.stop ? `${h.dist.toFixed(1)} km ${h.distKind === 'road' ? 'drive' : 'straight line'} · ${esc(h.stop)} (${esc(h.route)})` : '', true),
       fact('Property', esc([h.type, h.baths ? `${h.baths} bath` : ''].filter(Boolean).join(' · ')), true),
     ].join('');
     $('d-open').href = h.url;

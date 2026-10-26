@@ -30,8 +30,11 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA = os.path.join(ROOT, "data")
 API = "https://platform.realestate.co.nz/search/v1"
 OSRM = "https://router.project-osrm.org/route/v1/driving/"
+OSRM_TABLE = "https://router.project-osrm.org/table/v1/driving/"
+ROAD_CANDIDATES = 12   # nearest stops (straight line) checked by road for each house
+TABLE_MAX = 90         # coordinates per OSRM table request
 NZ = ZoneInfo("Pacific/Auckland")
-SCHEMA = 4  # bump when the matching rules change: non-matching houses are dropped, not greyed
+SCHEMA = 5  # bump when the matching rules change: non-matching houses are dropped, not greyed
 
 RADIUS_KM = 3.0
 PRICE_MIN, PRICE_MAX, BEDS_MIN = 900_000, 1_500_000, 4
@@ -222,6 +225,81 @@ def update_stop_addresses(routes, budget_s=900):
         addrs[k] = ", ".join(x for x in parts if x)
         time.sleep(1.1)  # Nominatim usage policy: max 1 request per second
     save("stop_addresses.json", addrs)
+
+
+# ---------------------------------------------------------------- road distance
+
+def unique_stops(stops):
+    seen, out = set(), []
+    for s in stops:
+        k = (round(s[0], 5), round(s[1], 5))
+        if k not in seen:
+            seen.add(k)
+            out.append(s)
+    return out
+
+
+def road_distances(cands, ustops, cache):
+    """Driving distance (km) from each house to its nearest stop, via OSRM.
+
+    Driving distance is never shorter than straight-line, so only stops within
+    RADIUS_KM straight-line are candidates. Returns {lid: {"d", "s", "r"}}; a
+    house missing from the result could not be checked this run.
+    """
+    skey = hashlib.md5(json.dumps([s[:2] for s in ustops]).encode()).hexdigest()[:8]
+    out, todo = {}, []
+    for lid, rec in cands.items():
+        k = f"{skey}:{rec['lat']:.5f},{rec['lng']:.5f}"
+        c = cache.get(lid)
+        if c and c.get("k") == k:
+            out[lid] = c
+            continue
+        near = sorted((hav(rec["lat"], rec["lng"], s[0], s[1]), i) for i, s in enumerate(ustops))
+        cand = [i for d, i in near[:ROAD_CANDIDATES] if d <= RADIUS_KM]
+        if not cand:
+            out[lid] = cache[lid] = {"k": k, "d": None, "s": None, "r": None}
+            continue
+        todo.append((lid, k, rec["lat"], rec["lng"], cand))
+    todo.sort(key=lambda t: (math.floor(t[2] / 0.02), math.floor(t[3] / 0.02), t[2]))
+    print(f"road distance: {len(out)} cached, {len(todo)} to check")
+
+    def run(chunk):
+        cols = sorted({i for t in chunk for i in t[4]})
+        if len(chunk) + len(cols) > TABLE_MAX and len(chunk) > 1:
+            half = len(chunk) // 2
+            run(chunk[:half])
+            run(chunk[half:])
+            return
+        coords = [(t[2], t[3]) for t in chunk] + [(ustops[i][0], ustops[i][1]) for i in cols]
+        n = len(chunk)
+        url = (OSRM_TABLE + ";".join(f"{lng:.6f},{lat:.6f}" for lat, lng in coords)
+               + "?annotations=distance&sources=" + ";".join(map(str, range(n)))
+               + "&destinations=" + ";".join(map(str, range(n, len(coords)))))
+        try:
+            j = fetch_json(url, tries=3)
+            if j.get("code") != "Ok":
+                raise RuntimeError(j.get("code"))
+        except Exception as e:  # noqa: BLE001
+            if n > 1:
+                half = n // 2
+                run(chunk[:half])
+                run(chunk[half:])
+            else:
+                print("road distance failed", chunk[0][0], e, file=sys.stderr)
+            return
+        finally:
+            time.sleep(1.1)  # public OSRM server: about one request per second
+        col_of = {i: c for c, i in enumerate(cols)}
+        for row, (lid, k, _, _, cand) in zip(j["distances"], chunk):
+            best = min(((row[col_of[i]], i) for i in cand if row[col_of[i]] is not None), default=(None, None))
+            d, i = best
+            out[lid] = cache[lid] = {"k": k, "d": round(d / 1000, 2) if d is not None else None,
+                                     "s": ustops[i][3] if i is not None else None,
+                                     "r": ustops[i][2] if i is not None else None}
+
+    for start in range(0, len(todo), 10):
+        run(todo[start:start + 10])
+    return out
 
 
 # ---------------------------------------------------------------- listings
@@ -541,6 +619,27 @@ def main():
             in_range[lid] = rec
     print(f"{len(in_range)} priced ${PRICE_MIN:,}-${PRICE_MAX:,}")
 
+    # Keep houses within RADIUS_KM driving distance of a stop.
+    roadc = load("roaddist.json", {})
+    road = road_distances(in_range, unique_stops(stops), roadc)
+    road_failed = 0
+    for lid in list(in_range):
+        rec, r = in_range[lid], road.get(lid)
+        if r is None:  # routing service unavailable for this house: keep known houses as they were, retry new ones
+            road_failed += 1
+            if lid in known:
+                rec["distKind"] = known[lid].get("distKind", "line")
+                rec["dist"] = known[lid].get("dist", rec["dist"])
+            else:
+                del in_range[lid]
+            continue
+        if r["d"] is None or r["d"] > RADIUS_KM:
+            del in_range[lid]
+            continue
+        rec["dist"], rec["stop"], rec["route"], rec["distKind"] = r["d"], r["s"], r["r"], "road"
+    save("roaddist.json", {k: v for k, v in roadc.items() if k in near})
+    print(f"{len(in_range)} within {RADIUS_KM} km by road ({road_failed} not checked)")
+
     # Title type and photos for houses not seen before.
     need = [lid for lid in in_range if lid not in known and lid not in titles]
     print(f"fetching {len(need)} listing details")
@@ -632,7 +731,9 @@ def main():
         "updatedAt": now.isoformat(timespec="minutes"),
         "newCount": new_today,
         "active": active,
-        "filters": {"priceMin": PRICE_MIN, "priceMax": PRICE_MAX, "bedsMin": BEDS_MIN, "radiusKm": RADIUS_KM},
+        "filters": {"priceMin": PRICE_MIN, "priceMax": PRICE_MAX, "bedsMin": BEDS_MIN, "radiusKm": RADIUS_KM,
+                    "distance": "driving"},
+        "stats": {"roadUnchecked": road_failed},
         "houses": houses,
     })
     save("photos.json", photos)

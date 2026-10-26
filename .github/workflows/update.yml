@@ -38,6 +38,7 @@ jobs:
           path: |
             data/valuations.json
             data/titles.json
+            data/roaddist.json
           key: lookups-${{ github.run_id }}
           restore-keys: lookups-
 

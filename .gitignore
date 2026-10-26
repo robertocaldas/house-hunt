@@ -3,3 +3,4 @@ __pycache__/
 # caches kept in the GitHub Actions cache, not in the repo
 data/valuations.json
 data/titles.json
+data/roaddist.json
