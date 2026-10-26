@@ -263,6 +263,10 @@ def main():
 
     hpath, ppath = os.path.join(DATA, "houses.json"), os.path.join(DATA, "photos.json")
     prev = json.load(open(hpath)) if os.path.exists(hpath) else {"houses": [], "excluded": {}}
+    if event == "schedule" and prev.get("updated") == today and prev.get("updatedAt", "")[11:13] >= "20":
+        print("Skipping: tonight's search already found new houses")
+        set_output(changed="false", new_count=0, date=today)
+        return
     photos = json.load(open(ppath)) if os.path.exists(ppath) else {}
     known = {h["id"]: h for h in prev["houses"]}
     excluded = prev.get("excluded", {})
