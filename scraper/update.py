@@ -31,7 +31,7 @@ DATA = os.path.join(ROOT, "data")
 API = "https://platform.realestate.co.nz/search/v1"
 OSRM = "https://router.project-osrm.org/route/v1/driving/"
 NZ = ZoneInfo("Pacific/Auckland")
-SCHEMA = 2
+SCHEMA = 3  # bump when the matching rules change: non-matching houses are dropped, not greyed
 
 RADIUS_KM = 3.0
 PRICE_MIN, PRICE_MAX, BEDS_MIN = 900_000, 1_500_000, 4
@@ -103,9 +103,10 @@ def load_routes():
 
 
 def load_stops(routes):
+    """Morning (to-school) stops only; Kristin School is the last stop of each."""
     stops = []
     for r in routes:
-        for g in ("am", "pm"):
+        for g in ("am",):
             for name, lat, lng in r[g]:
                 stops.append((lat, lng, r["code"], clean_stop(name)))
     return stops
@@ -185,7 +186,7 @@ def update_stop_addresses(routes, budget_s=900):
     addrs = load("stop_addresses.json", {})
     todo, seen = [], set()
     for r in routes:
-        for g in ("am", "pm"):
+        for g in ("am",):
             for name, lat, lng in r[g]:
                 k = stop_key(lat, lng)
                 if k not in addrs and k not in seen:

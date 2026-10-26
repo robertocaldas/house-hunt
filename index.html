@@ -272,7 +272,7 @@ footer p { margin: 0; max-width: 70ch; }
 </section>
 
 <footer class="wrap">
-  <p>Listings from realestate.co.nz, searched daily at 8pm NZ time. The $900k–$1.5M range is checked against the advertised price; without one, against the realestate.co.nz estimate (grey, “est”); without that, against the council valuation (grey, “CV”). Listings with none of these are left out. Distance is straight-line to the nearest stop, and Kristin School counts as a stop. Dashed route lines are the non-stop run to school. Favourites are saved on this device.</p>
+  <p>Listings from realestate.co.nz, searched daily at 8pm NZ time. The $900k–$1.5M range is checked against the advertised price; without one, against the realestate.co.nz estimate (grey, “est”); without that, against the council valuation (grey, “CV”). Listings with none of these are left out. Distance is straight-line to the nearest morning (to-school) stop, and Kristin School counts as a stop. Dashed route lines are the non-stop run to school. Favourites are saved on this device.</p>
 </footer>
 
 <div class="scrim" id="scrim" hidden></div>
@@ -426,7 +426,7 @@ footer p { margin: 0; max-width: 70ch; }
         .bindTooltip(tip, { sticky: true, className: 'route-tip' }).addTo(routeLayer);
       L.polyline(expressPath, { pane: 'routes', color: r.color, weight: 2, opacity: .3, dashArray: '2 7', lineCap: 'round' })
         .bindTooltip(`${tip} · non-stop to Kristin`, { sticky: true, className: 'route-tip' }).addTo(routeLayer);
-      [...r.am, ...r.pm].forEach((s) => {
+      r.am.forEach((s) => {
         const name = cleanStop(s[0]);
         const key = s[1].toFixed(4) + ',' + s[2].toFixed(4);
         if (name === 'Kristin School' || seen.has(key)) return;
