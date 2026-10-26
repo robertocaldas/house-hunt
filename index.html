@@ -354,14 +354,19 @@ footer p { margin: 0; max-width: 70ch; }
   const dark = () => document.documentElement.dataset.theme ? document.documentElement.dataset.theme === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
   const map = L.map('map', { zoomControl: true, preferCanvas: true, attributionControl: true }).setView([-36.76, 174.72], 11);
   map.attributionControl.setPrefix(false);
-  let tiles;
+  let tiles = [];
   const setTiles = () => {
-    if (tiles) map.removeLayer(tiles);
-    tiles = L.tileLayer(`https://{s}.basemaps.cartocdn.com/${dark() ? 'dark_all' : 'light_all'}/{z}/{x}/{y}{r}.png`, {
-      subdomains: 'abcd', maxZoom: 19,
-      attribution: '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> © <a href="https://carto.com/attributions" target="_blank" rel="noopener">CARTO</a>',
-    }).addTo(map);
+    tiles.forEach((t) => map.removeLayer(t));
+    const shade = dark() ? 'Dark' : 'Light';
+    const esri = (layer) => `https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_${shade}_Gray_${layer}/MapServer/tile/{z}/{y}/{x}`;
+    const opts = { maxNativeZoom: 16, maxZoom: 19 };
+    tiles = [
+      L.tileLayer(esri('Base'), { ...opts, attribution: 'Tiles © <a href="https://www.esri.com" target="_blank" rel="noopener">Esri</a> — Esri, HERE, Garmin, © OpenStreetMap contributors' }),
+      L.tileLayer(esri('Reference'), { ...opts, pane: 'labels' }),
+    ];
+    tiles.forEach((t) => t.addTo(map));
   };
+  const labels = map.createPane('labels'); labels.style.zIndex = 250; labels.style.pointerEvents = 'none';
   setTiles();
   matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', () => { setTiles(); if (houses.length) drawDots(); });
 
@@ -396,6 +401,10 @@ footer p { margin: 0; max-width: 70ch; }
     });
     L.marker(school, { icon: L.divIcon({ className: '', html: '<div class="school" title="Kristin School">K</div>', iconSize: [0, 0] }), keyboard: false, zIndexOffset: 1000 })
       .bindTooltip('Kristin School', { className: 'route-tip' }).addTo(routeLayer);
+    if (!location.hash) {
+      const pts = routes.filter((r) => r.code !== 'B18').flatMap((r) => r.am.map((s) => [s[1], s[2]]));
+      map.fitBounds(L.latLngBounds(pts).pad(0.02));
+    }
   }
 
   const order = { gone: 0, old: 1, new: 2, fav: 3 };
