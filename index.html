@@ -1,0 +1,658 @@
+<!doctype html>
+<html lang="en-NZ">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Kristin Bus Homes</title>
+<meta name="description" content="Houses for sale within 3 km of a Kristin School bus stop, updated daily at 8pm.">
+<meta name="theme-color" content="#f4f6f5" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#101716" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Bus Homes">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230b6e69'/%3E%3Cpath d='M8 17l8-7 8 7v8h-5v-5h-6v5H8z' fill='%23fff'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&display=swap">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<style>
+/* Layout: sticky header, map band, sortable table; detail opens as a bottom sheet on phones and a side panel on wide screens. */
+:root {
+  --bg: #f4f6f5;
+  --surface: #ffffff;
+  --ink: #17201f;
+  --muted: #5b6866;
+  --line: #dde3e1;
+  --accent: #0b6e69;
+  --accent-ink: #ffffff;
+  --new: #9fe0a0;
+  --new-ink: #123b14;
+  --old: #2f6edb;
+  --old-ink: #ffffff;
+  --fav: #e2b33c;
+  --fav-ink: #3a2900;
+  --gone: #a7afad;
+  --gone-ink: #ffffff;
+  --shadow: 0 10px 30px rgba(16, 30, 28, .16);
+  --display: "Bricolage Grotesque", "Avenir Next", "Segoe UI", system-ui, sans-serif;
+  --body: "Atkinson Hyperlegible", "Helvetica Neue", Arial, system-ui, sans-serif;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #101716; --surface: #18211f; --ink: #e6eeec; --muted: #9babA8; --line: #2a3533;
+    --accent: #4bb9ae; --accent-ink: #06201d;
+    --new: #8ed88f; --new-ink: #0b2b0c; --old: #5a8ef0; --old-ink: #08142b;
+    --fav: #e8c05a; --fav-ink: #2a1d00; --gone: #5f6a68; --gone-ink: #e6eeec;
+    --shadow: 0 10px 30px rgba(0, 0, 0, .5);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #101716; --surface: #18211f; --ink: #e6eeec; --muted: #9babA8; --line: #2a3533;
+  --accent: #4bb9ae; --accent-ink: #06201d;
+  --new: #8ed88f; --new-ink: #0b2b0c; --old: #5a8ef0; --old-ink: #08142b;
+  --fav: #e8c05a; --fav-ink: #2a1d00; --gone: #5f6a68; --gone-ink: #e6eeec;
+  --shadow: 0 10px 30px rgba(0, 0, 0, .5);
+  color-scheme: dark;
+}
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font: 15px/1.5 var(--body);
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); background: var(--bg); z-index: 1001; }
+[hidden] { display: none !important; }
+button { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.wrap { padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+
+/* Header */
+header.top {
+  position: sticky; top: env(safe-area-inset-top, 0px); z-index: 1000;
+  background: color-mix(in srgb, var(--bg) 92%, transparent);
+  backdrop-filter: saturate(1.4) blur(10px); -webkit-backdrop-filter: saturate(1.4) blur(10px);
+  border-bottom: 1px solid var(--line);
+}
+.top-inner { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 20px; padding-block: 12px; }
+.brand { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; min-width: 0; }
+h1 { font: 700 22px/1.1 var(--display); letter-spacing: -.01em; margin: 0; text-wrap: balance; }
+.stamp { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin-left: auto; }
+.chip {
+  display: inline-flex; align-items: center; gap: 7px; padding: 5px 11px 5px 9px;
+  border: 1px solid var(--line); border-radius: 999px; background: var(--surface);
+  font-size: 13px; cursor: pointer; font-variant-numeric: tabular-nums; user-select: none;
+}
+.chip[aria-pressed="false"] { opacity: .45; }
+.chip b { font-weight: 700; }
+.dot { width: 10px; height: 10px; border-radius: 50%; flex: none; box-shadow: 0 0 0 1.5px var(--surface), 0 0 0 2.5px color-mix(in srgb, var(--ink) 18%, transparent); }
+.dot.new { background: var(--new); } .dot.old { background: var(--old); } .dot.fav { background: var(--fav); } .dot.gone { background: var(--gone); }
+
+/* Map */
+.map-band { position: relative; }
+#map { height: clamp(340px, 60vh, 680px); background: var(--bg); z-index: 1; }
+.map-note {
+  position: absolute; z-index: 500; left: max(12px, env(safe-area-inset-left, 0px)); bottom: 12px;
+  background: var(--surface); color: var(--muted); border: 1px solid var(--line);
+  padding: 4px 10px; border-radius: 8px; font-size: 12px; pointer-events: none;
+}
+.leaflet-container { font: 13px/1.4 var(--body); }
+.leaflet-control-attribution { font-size: 10px; }
+.pin {
+  display: inline-block; transform: translate(-50%, -50%); white-space: nowrap;
+  padding: 2px 7px; border-radius: 999px; font: 700 12px/1.35 var(--body); font-variant-numeric: tabular-nums;
+  box-shadow: 0 1px 3px rgba(0,0,0,.28); border: 1.5px solid var(--surface); cursor: pointer;
+}
+.pin.new { background: var(--new); color: var(--new-ink); }
+.pin.old { background: var(--old); color: var(--old-ink); }
+.pin.fav { background: var(--fav); color: var(--fav-ink); }
+.pin.gone { background: var(--gone); color: var(--gone-ink); opacity: .8; }
+.pin.est { font-weight: 400; font-style: italic; }
+.school {
+  transform: translate(-50%, -50%); width: 26px; height: 26px; border-radius: 7px;
+  background: var(--accent); color: var(--accent-ink); display: grid; place-items: center;
+  font: 700 14px/1 var(--display); border: 2px solid var(--surface); box-shadow: 0 1px 4px rgba(0,0,0,.3);
+}
+.leaflet-tooltip.route-tip { font: 12px/1.3 var(--body); padding: 3px 7px; }
+
+/* Table */
+section.list { padding-block: 22px 40px; }
+.list-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 16px; margin-bottom: 12px; }
+h2 { font: 700 19px/1.2 var(--display); margin: 0; }
+.list-head p { margin: 0; color: var(--muted); font-size: 13px; }
+.table-scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; min-width: 640px; }
+th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+th { position: sticky; top: 0; background: var(--surface); font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 700; white-space: nowrap; }
+th button { all: unset; cursor: pointer; display: inline-flex; gap: 4px; align-items: center; }
+th button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
+th .arrow { opacity: 0; font-size: 10px; }
+th[aria-sort] .arrow { opacity: 1; color: var(--accent); }
+th.num, td.num { text-align: right; }
+th.num button { flex-direction: row-reverse; }
+tbody tr { cursor: pointer; }
+tbody tr:hover { background: color-mix(in srgb, var(--accent) 7%, transparent); }
+tbody tr:last-child td { border-bottom: 0; }
+tr.gone td { color: var(--muted); }
+tr.gone td.addr { text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--muted) 60%, transparent); }
+td.mark { width: 44px; }
+.markcell { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; }
+.markcell .dot { width: 12px; height: 12px; }
+.star-sm { color: var(--fav); font-size: 17px; line-height: 1; }
+td.addr { font-weight: 700; min-width: 180px; }
+.muted { color: var(--muted); }
+.est { color: var(--muted); font-style: italic; }
+.empty { padding: 40px 16px; text-align: center; color: var(--muted); }
+
+/* Detail sheet */
+.scrim { position: fixed; inset: 0; background: rgba(8, 14, 13, .42); z-index: 2000; opacity: 0; transition: opacity .2s; }
+.scrim.open { opacity: 1; }
+.sheet {
+  position: fixed; z-index: 2001; background: var(--surface); box-shadow: var(--shadow);
+  display: flex; flex-direction: column; overflow: hidden;
+  left: 0; right: 0; bottom: 0; max-height: 92vh; border-radius: 18px 18px 0 0;
+  transform: translateY(102%); transition: transform .25s cubic-bezier(.2,.8,.2,1);
+}
+.sheet.open { transform: none; }
+@media (min-width: 860px) {
+  .sheet { left: auto; top: 12px; bottom: 12px; right: 12px; width: 460px; max-height: none; border-radius: 18px; transform: translateX(110%); }
+}
+@media (prefers-reduced-motion: reduce) { .sheet, .scrim { transition: none; } }
+.sheet-scroll { overflow-y: auto; overscroll-behavior: contain; padding-bottom: env(safe-area-inset-bottom, 0px); }
+.grab { width: 40px; height: 5px; border-radius: 3px; background: var(--line); margin: 8px auto 0; }
+@media (min-width: 860px) { .grab { display: none; } }
+.close {
+  position: absolute; top: 12px; right: 12px; z-index: 3; width: 34px; height: 34px; border-radius: 50%;
+  border: 0; background: color-mix(in srgb, var(--surface) 88%, transparent); box-shadow: 0 1px 4px rgba(0,0,0,.25);
+  cursor: pointer; font-size: 20px; line-height: 1; display: grid; place-items: center;
+}
+.gallery { position: relative; background: var(--line); }
+.strip { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; aspect-ratio: 3 / 2; max-width: 100%; }
+.strip::-webkit-scrollbar { display: none; }
+.strip img { flex: 0 0 100%; width: 100%; height: 100%; object-fit: cover; scroll-snap-align: center; cursor: zoom-in; background: var(--line); }
+.count { position: absolute; right: 10px; bottom: 10px; background: rgba(0,0,0,.6); color: #fff; font-size: 12px; padding: 2px 8px; border-radius: 999px; font-variant-numeric: tabular-nums; }
+.gal-btn { position: absolute; top: 50%; transform: translateY(-50%); width: 34px; height: 34px; border-radius: 50%; border: 0; background: rgba(255,255,255,.88); color: #111; cursor: pointer; font-size: 18px; display: grid; place-items: center; }
+.gal-btn.prev { left: 10px; } .gal-btn.next { right: 10px; }
+@media (hover: none) { .gal-btn { display: none; } }
+.nophoto { aspect-ratio: 3 / 2; display: grid; place-items: center; color: var(--muted); font-size: 13px; }
+.body { padding: 16px 20px 24px; display: grid; gap: 16px; }
+.price-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.price { font: 700 28px/1.1 var(--display); letter-spacing: -.01em; font-variant-numeric: tabular-nums; }
+.price.est { color: var(--muted); font-weight: 500; font-style: normal; }
+.price-sub { color: var(--muted); font-size: 13px; margin-top: 4px; }
+.star {
+  flex: none; width: 44px; height: 44px; border-radius: 50%; border: 1px solid var(--line); background: var(--surface);
+  cursor: pointer; display: grid; place-items: center;
+}
+.star svg { width: 22px; height: 22px; fill: none; stroke: var(--muted); stroke-width: 1.8; }
+.star[aria-pressed="true"] { background: color-mix(in srgb, var(--fav) 18%, var(--surface)); border-color: var(--fav); }
+.star[aria-pressed="true"] svg { fill: var(--fav); stroke: var(--fav); }
+.addr-row { display: flex; align-items: center; gap: 8px; }
+.addr-row h3 { font: 700 18px/1.25 var(--display); margin: 0; text-wrap: balance; }
+.fh { flex: none; width: 22px; height: 22px; border-radius: 50%; background: var(--accent); display: grid; place-items: center; }
+.fh svg { width: 13px; height: 13px; stroke: var(--accent-ink); stroke-width: 3; fill: none; }
+.status { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); }
+.facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+.fact { background: var(--surface); padding: 10px 12px; min-width: 0; }
+.fact dt { font-size: 11px; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); }
+.fact dd { margin: 2px 0 0; font-weight: 700; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.fact.wide { grid-column: 1 / -1; }
+.actions { display: flex; gap: 10px; }
+.btn {
+  flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 46px;
+  border-radius: 12px; border: 1px solid var(--line); background: var(--surface); cursor: pointer;
+  text-decoration: none; color: var(--ink); font-weight: 700;
+}
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.btn svg { width: 18px; height: 18px; stroke: currentColor; stroke-width: 2; fill: none; }
+.src { font-size: 12px; color: var(--muted); margin: 0; }
+
+/* Fullscreen photos */
+.viewer { position: fixed; inset: 0; z-index: 3000; background: #000; display: flex; flex-direction: column; }
+.viewer .vstrip { flex: 1; display: flex; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; }
+.viewer .vstrip::-webkit-scrollbar { display: none; }
+.viewer img { flex: 0 0 100%; width: 100%; height: 100%; object-fit: contain; scroll-snap-align: center; }
+.viewer .vclose { position: absolute; top: calc(12px + env(safe-area-inset-top, 0px)); right: calc(12px + env(safe-area-inset-right, 0px)); z-index: 2; width: 40px; height: 40px; border-radius: 50%; border: 0; background: rgba(255,255,255,.18); color: #fff; font-size: 24px; cursor: pointer; }
+.viewer .vcount { position: absolute; left: 50%; transform: translateX(-50%); bottom: calc(14px + env(safe-area-inset-bottom, 0px)); color: #fff; font-size: 13px; background: rgba(255,255,255,.14); padding: 3px 10px; border-radius: 999px; font-variant-numeric: tabular-nums; }
+.viewer .gal-btn { background: rgba(255,255,255,.2); color: #fff; }
+
+.toast { position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: var(--ink); color: var(--bg); padding: 8px 14px; border-radius: 10px; font-size: 14px; z-index: 4000; }
+footer { color: var(--muted); font-size: 12px; padding-block: 0 32px; }
+footer p { margin: 0; max-width: 70ch; }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="wrap top-inner">
+    <div class="brand">
+      <h1>Kristin Bus Homes</h1>
+      <span class="stamp" id="stamp">Loading listings…</span>
+    </div>
+    <div class="chips" id="chips" role="group" aria-label="Show on map and list">
+      <button class="chip" data-k="new" aria-pressed="true"><span class="dot new"></span>New <b id="c-new">–</b></button>
+      <button class="chip" data-k="old" aria-pressed="true"><span class="dot old"></span>Seen before <b id="c-old">–</b></button>
+      <button class="chip" data-k="fav" aria-pressed="true"><span class="dot fav"></span>Favourites <b id="c-fav">–</b></button>
+      <button class="chip" data-k="gone" aria-pressed="true"><span class="dot gone"></span>Off market <b id="c-gone">–</b></button>
+    </div>
+  </div>
+</header>
+
+<div class="map-band">
+  <div id="map" role="region" aria-label="Map of houses and Kristin bus routes"></div>
+  <div class="map-note" id="mapnote">Zoom in to see prices</div>
+</div>
+
+<section class="list wrap" aria-labelledby="list-title">
+  <div class="list-head">
+    <h2 id="list-title">Houses</h2>
+    <p id="list-sub">4+ bedrooms · $900k–$1.5M · within 3 km of a Kristin bus stop</p>
+  </div>
+  <div class="table-scroll">
+    <table id="tbl">
+      <thead>
+        <tr>
+          <th data-col="mark" style="width:44px"><button aria-label="Sort by status"><span class="arrow">▲</span></button></th>
+          <th data-col="addr"><button>Address <span class="arrow">▲</span></button></th>
+          <th data-col="sub"><button>Neighbourhood <span class="arrow">▲</span></button></th>
+          <th data-col="beds" class="num"><button>Beds <span class="arrow">▲</span></button></th>
+          <th data-col="floor" class="num"><button>m² <span class="arrow">▲</span></button></th>
+          <th data-col="price" class="num"><button>Price <span class="arrow">▲</span></button></th>
+        </tr>
+      </thead>
+      <tbody id="rows"><tr><td colspan="6" class="empty">Loading listings…</td></tr></tbody>
+    </table>
+  </div>
+</section>
+
+<footer class="wrap">
+  <p>Listings from realestate.co.nz, searched daily at 8pm NZ time. Price in grey is the realestate.co.nz estimate for listings without an advertised price. Distance is straight-line to the nearest stop. Favourites are saved on this device.</p>
+</footer>
+
+<div class="scrim" id="scrim" hidden></div>
+<aside class="sheet" id="sheet" role="dialog" aria-modal="true" aria-labelledby="d-addr" hidden>
+  <button class="close" id="d-close" aria-label="Close">×</button>
+  <div class="sheet-scroll">
+    <div class="grab"></div>
+    <div class="gallery" id="d-gallery"></div>
+    <div class="body">
+      <div class="price-row">
+        <div>
+          <div class="price" id="d-price"></div>
+          <div class="price-sub" id="d-price-sub"></div>
+        </div>
+        <button class="star" id="d-star" aria-pressed="false" aria-label="Favourite">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z" stroke-linejoin="round"/></svg>
+        </button>
+      </div>
+      <div>
+        <div class="addr-row"><h3 id="d-addr"></h3><span class="fh" id="d-fh" aria-label="Freehold" role="img" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span></div>
+        <div class="status" id="d-status"></div>
+      </div>
+      <dl class="facts" id="d-facts"></dl>
+      <div class="actions">
+        <a class="btn primary" id="d-open" target="_blank" rel="noopener">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          Open listing
+        </a>
+        <button class="btn" id="d-share">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7.5 7.5L12 3l4.5 4.5M6 11H5a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-8a1 1 0 0 0-1-1h-1" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          Share
+        </button>
+      </div>
+      <p class="src" id="d-src"></p>
+    </div>
+  </div>
+</aside>
+
+<div class="viewer" id="viewer" hidden role="dialog" aria-modal="true" aria-label="Photos">
+  <button class="vclose" id="v-close" aria-label="Close photos">×</button>
+  <div class="vstrip" id="v-strip"></div>
+  <button class="gal-btn prev" id="v-prev" aria-label="Previous photo">‹</button>
+  <button class="gal-btn next" id="v-next" aria-label="Next photo">›</button>
+  <div class="vcount" id="v-count"></div>
+</div>
+<div class="toast" id="toast" hidden></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const NZTZ = 'Pacific/Auckland';
+  const IMG = (id, md5, size) => `https://mediaserver.realestate.co.nz/listings/${id}/${md5}.${size}.jpg`;
+  const FAV_KEY = 'kbh:favs', SHOW_KEY = 'kbh:show';
+
+  const store = {
+    get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (e) { return d; } },
+    set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} },
+  };
+  let favs = new Set(store.get(FAV_KEY, []));
+  const show = Object.assign({ new: true, old: true, fav: true, gone: true }, store.get(SHOW_KEY, {}));
+
+  let data = { houses: [] }, houses = [], byId = new Map(), photos = null, photosP = null;
+  let sort = { col: 'mark', dir: 1 };
+  let current = null;
+
+  // ---------- formatting ----------
+  const money = (n) => '$' + Math.round(n).toLocaleString('en-NZ');
+  const short = (n) => n >= 1e6 ? '$' + parseFloat((n / 1e6).toFixed(2)) + 'M' : '$' + Math.round(n / 1e3) + 'k';
+  const dateFmt = new Intl.DateTimeFormat('en-NZ', { weekday: 'short', day: 'numeric', month: 'short', timeZone: NZTZ });
+  const dayFmt = new Intl.DateTimeFormat('en-NZ', { day: 'numeric', month: 'short', timeZone: NZTZ });
+  const timeFmt = new Intl.DateTimeFormat('en-NZ', { hour: 'numeric', minute: '2-digit', timeZone: NZTZ });
+  const plainDate = (s) => s ? dayFmt.format(new Date(s + 'T12:00:00+13:00')) : '';
+  const when = (s) => { if (!s) return ''; const d = new Date(s); return `${dateFmt.format(d)}, ${timeFmt.format(d).replace(' ', ' ')}`; };
+  const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+  const status = (h) => favs.has(h.id) ? 'fav' : h.removed ? 'gone' : h.first === data.updated ? 'new' : 'old';
+  const kind = (h) => h.removed ? 'gone' : h.first === data.updated ? 'new' : 'old';
+  const visible = (h) => show[status(h)];
+  const priceVal = (h) => h.priceNum || (h.est ? h.est[1] : null);
+
+  // ---------- map ----------
+  const dark = () => document.documentElement.dataset.theme ? document.documentElement.dataset.theme === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
+  const map = L.map('map', { zoomControl: true, preferCanvas: true, attributionControl: true }).setView([-36.76, 174.72], 11);
+  map.attributionControl.setPrefix(false);
+  let tiles;
+  const setTiles = () => {
+    if (tiles) map.removeLayer(tiles);
+    tiles = L.tileLayer(`https://{s}.basemaps.cartocdn.com/${dark() ? 'dark_all' : 'light_all'}/{z}/{x}/{y}{r}.png`, {
+      subdomains: 'abcd', maxZoom: 19,
+      attribution: '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> © <a href="https://carto.com/attributions" target="_blank" rel="noopener">CARTO</a>',
+    }).addTo(map);
+  };
+  setTiles();
+  matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', () => { setTiles(); if (houses.length) drawDots(); });
+
+  map.createPane('routes').style.zIndex = 350;
+  map.createPane('dots').style.zIndex = 420;
+  const routeLayer = L.layerGroup().addTo(map);
+  const canvas = L.canvas({ pane: 'dots', padding: 0.3 });
+  const dotLayer = L.layerGroup().addTo(map);
+  const pinLayer = L.layerGroup().addTo(map);
+  const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+
+  function cleanStop(n) {
+    return n.replace(/\s*Bus departs.*$/i, '').replace(/\s*\((?:ID\s*)?\d{4}\)/g, '').replace(/\s*\(no (?:AT )?bus stop\)/i, '')
+      .replace(/\s+PM$/, '').replace(/\s+\d{1,2}[.:]\d{2}\s*am$/i, '').replace(/\s+/g, ' ').trim();
+  }
+
+  function drawRoutes(routes) {
+    const school = [-36.743365, 174.691607];
+    const seen = new Set();
+    routes.forEach((r) => {
+      const path = r.am.filter((s) => cleanStop(s[0]) !== 'Kristin School').map((s) => [s[1], s[2]]);
+      L.polyline(path, { pane: 'routes', color: r.color, weight: 3, opacity: .28, lineJoin: 'round', interactive: true })
+        .bindTooltip(`${r.code} · ${r.name}`, { sticky: true, className: 'route-tip' }).addTo(routeLayer);
+      [...r.am, ...r.pm].forEach((s) => {
+        const name = cleanStop(s[0]);
+        const key = s[1].toFixed(4) + ',' + s[2].toFixed(4);
+        if (name === 'Kristin School' || seen.has(key)) return;
+        seen.add(key);
+        L.circleMarker([s[1], s[2]], { pane: 'routes', radius: 2.5, color: r.color, weight: 1.5, opacity: .55, fillColor: '#fff', fillOpacity: .9 })
+          .bindTooltip(`${name} · ${r.code}`, { className: 'route-tip' }).addTo(routeLayer);
+      });
+    });
+    L.marker(school, { icon: L.divIcon({ className: '', html: '<div class="school" title="Kristin School">K</div>', iconSize: [0, 0] }), keyboard: false, zIndexOffset: 1000 })
+      .bindTooltip('Kristin School', { className: 'route-tip' }).addTo(routeLayer);
+  }
+
+  const order = { gone: 0, old: 1, new: 2, fav: 3 };
+  function drawDots() {
+    dotLayer.clearLayers();
+    const colors = { new: css('--new'), old: css('--old'), fav: css('--fav'), gone: css('--gone') };
+    const stroke = css('--surface');
+    houses.filter(visible).sort((a, b) => order[status(a)] - order[status(b)]).forEach((h) => {
+      const st = status(h);
+      L.circleMarker([h.lat, h.lng], {
+        renderer: canvas, radius: st === 'fav' ? 7 : st === 'gone' ? 4 : 5.5, color: stroke, weight: 1.5,
+        fillColor: colors[st], fillOpacity: st === 'gone' ? .7 : 1,
+      }).on('click', () => openSheet(h.id)).addTo(dotLayer);
+    });
+    drawPins();
+  }
+
+  function pinLabel(h) {
+    if (h.priceNum) return { t: short(h.priceNum), est: false };
+    if (h.est) return { t: '~' + short(h.est[1]), est: true };
+    return { t: h.method || '—', est: true };
+  }
+  function drawPins() {
+    pinLayer.clearLayers();
+    const b = map.getBounds().pad(0.1);
+    const inView = houses.filter((h) => visible(h) && b.contains([h.lat, h.lng]));
+    const usePins = map.getZoom() >= 14 || inView.length <= 160;
+    $('mapnote').hidden = usePins;
+    if (!usePins) return;
+    inView.sort((a, b) => order[status(a)] - order[status(b)]).slice(-400).forEach((h) => {
+      const st = status(h), l = pinLabel(h);
+      L.marker([h.lat, h.lng], {
+        icon: L.divIcon({ className: '', html: `<span class="pin ${st}${l.est ? ' est' : ''}">${esc(l.t)}</span>`, iconSize: [0, 0] }),
+        zIndexOffset: order[st] * 100, keyboard: false, title: h.addr,
+      }).on('click', () => openSheet(h.id)).addTo(pinLayer);
+    });
+  }
+  map.on('moveend zoomend', drawPins);
+
+  // ---------- header ----------
+  function renderCounts() {
+    const c = { new: 0, old: 0, fav: 0, gone: 0 };
+    houses.forEach((h) => { c[status(h)]++; });
+    Object.keys(c).forEach((k) => { $('c-' + k).textContent = c[k].toLocaleString('en-NZ'); });
+    document.querySelectorAll('.chip').forEach((b) => b.setAttribute('aria-pressed', String(!!show[b.dataset.k])));
+  }
+  $('chips').addEventListener('click', (e) => {
+    const b = e.target.closest('.chip'); if (!b) return;
+    show[b.dataset.k] = !show[b.dataset.k];
+    store.set(SHOW_KEY, show);
+    renderAll();
+  });
+
+  // ---------- table ----------
+  const markRank = (h) => ({ new: 0, fav: 1, old: 2, gone: 3 })[status(h)];
+  const keyFor = {
+    mark: (h) => markRank(h),
+    addr: (h) => h.addr.toLowerCase(),
+    sub: (h) => h.sub.toLowerCase(),
+    beds: (h) => h.beds || 0,
+    floor: (h) => h.floor || 0,
+    price: (h) => priceVal(h) ?? Infinity,
+  };
+  function cmp(a, b) {
+    const f = keyFor[sort.col];
+    const x = f(a), y = f(b);
+    if (x < y) return -sort.dir;
+    if (x > y) return sort.dir;
+    return (priceVal(a) ?? 9e9) - (priceVal(b) ?? 9e9) || a.addr.localeCompare(b.addr);
+  }
+  function priceCell(h) {
+    if (h.priceNum) return money(h.priceNum);
+    if (h.est) return `<span class="est" title="realestate.co.nz estimate">≈ ${money(h.est[1])}</span>`;
+    return `<span class="muted">${esc(h.method)}</span>`;
+  }
+  function renderTable() {
+    const rows = houses.filter(visible).sort(cmp);
+    const tb = $('rows');
+    if (!rows.length) { tb.innerHTML = `<tr><td colspan="6" class="empty">${houses.length ? 'No houses match the selected filters.' : 'No houses yet. The first search runs tonight at 8pm.'}</td></tr>`; return; }
+    tb.innerHTML = rows.map((h) => {
+      const st = status(h);
+      const mark = favs.has(h.id) ? '<span class="star-sm" aria-label="Favourite">★</span>' : `<span class="dot ${st}" aria-label="${st === 'new' ? 'New' : st === 'gone' ? 'Off market' : 'Seen before'}"></span>`;
+      return `<tr data-id="${h.id}" class="${h.removed ? 'gone' : ''}" tabindex="0">
+        <td class="mark"><span class="markcell">${mark}</span></td>
+        <td class="addr">${esc(h.addr)}</td>
+        <td>${esc(h.sub)}</td>
+        <td class="num">${h.beds || '—'}</td>
+        <td class="num">${h.floor ? h.floor.toLocaleString('en-NZ') : '<span class="muted">—</span>'}</td>
+        <td class="num">${priceCell(h)}</td></tr>`;
+    }).join('');
+    document.querySelectorAll('#tbl th').forEach((th) => {
+      if (th.dataset.col === sort.col) { th.setAttribute('aria-sort', sort.dir > 0 ? 'ascending' : 'descending'); th.querySelector('.arrow').textContent = sort.dir > 0 ? '▲' : '▼'; }
+      else th.removeAttribute('aria-sort');
+    });
+    $('list-title').textContent = `Houses (${rows.length.toLocaleString('en-NZ')})`;
+  }
+  document.querySelector('#tbl thead').addEventListener('click', (e) => {
+    const th = e.target.closest('th'); if (!th) return;
+    const col = th.dataset.col;
+    sort = { col, dir: sort.col === col ? -sort.dir : (['beds', 'floor'].includes(col) ? -1 : 1) };
+    renderTable();
+  });
+  $('rows').addEventListener('click', (e) => { const tr = e.target.closest('tr[data-id]'); if (tr) openSheet(tr.dataset.id, true); });
+  $('rows').addEventListener('keydown', (e) => { if (e.key === 'Enter') { const tr = e.target.closest('tr[data-id]'); if (tr) openSheet(tr.dataset.id, true); } });
+
+  function renderAll() { renderCounts(); drawDots(); renderTable(); }
+
+  // ---------- detail sheet ----------
+  function loadPhotos() {
+    if (!photosP) photosP = fetch('data/photos.json', { cache: 'no-cache' }).then((r) => r.ok ? r.json() : {}).catch(() => ({})).then((p) => (photos = p));
+    return photosP;
+  }
+
+  function gallery(h) {
+    const g = $('d-gallery');
+    const list = (photos && photos[h.id]) || [];
+    if (!photos) { g.innerHTML = '<div class="nophoto">Loading photos…</div>'; loadPhotos().then(() => { if (current === h.id) gallery(h); }); return; }
+    if (!list.length) { g.innerHTML = '<div class="nophoto">No photos</div>'; return; }
+    g.innerHTML = `<div class="strip" id="d-strip">${list.map((m, i) => `<img src="${IMG(h.id, m, 'crop.900x600')}" alt="Photo ${i + 1} of ${esc(h.addr)}" loading="${i < 2 ? 'eager' : 'lazy'}" data-i="${i}">`).join('')}</div>
+      <button class="gal-btn prev" aria-label="Previous photo">‹</button><button class="gal-btn next" aria-label="Next photo">›</button>
+      <span class="count" id="d-count">1 / ${list.length}</span>`;
+    const strip = $('d-strip');
+    const idx = () => Math.round(strip.scrollLeft / strip.clientWidth);
+    strip.addEventListener('scroll', () => { $('d-count').textContent = `${idx() + 1} / ${list.length}`; }, { passive: true });
+    strip.addEventListener('click', (e) => { const im = e.target.closest('img'); if (im) openViewer(h, +im.dataset.i); });
+    g.querySelector('.prev').onclick = () => strip.scrollBy({ left: -strip.clientWidth, behavior: 'smooth' });
+    g.querySelector('.next').onclick = () => strip.scrollBy({ left: strip.clientWidth, behavior: 'smooth' });
+  }
+
+  function fact(label, value, wide) { return value ? `<div class="fact${wide ? ' wide' : ''}"><dt>${label}</dt><dd>${value}</dd></div>` : ''; }
+
+  function fillSheet(h) {
+    const st = status(h);
+    if (h.priceNum) {
+      $('d-price').className = 'price'; $('d-price').textContent = money(h.priceNum);
+      $('d-price-sub').textContent = h.method && !/^asking price$/i.test(h.method) ? h.method : '';
+    } else if (h.est) {
+      $('d-price').className = 'price est';
+      $('d-price').textContent = h.est[0] && h.est[2] ? `${short(h.est[0])} – ${short(h.est[2])}` : '≈ ' + money(h.est[1]);
+      $('d-price-sub').textContent = `Estimate ≈ ${money(h.est[1])} · not an asking price`;
+    } else {
+      $('d-price').className = 'price est'; $('d-price').textContent = h.method || 'Price on enquiry';
+      $('d-price-sub').textContent = 'No price or estimate available';
+    }
+    $('d-addr').textContent = h.addr;
+    $('d-fh').hidden = h.freehold !== true;
+    const statusText = st === 'gone' || h.removed ? `Off market since ${plainDate(h.removed)}` : h.first === data.updated ? 'New today' : `First seen ${plainDate(h.first)}`;
+    $('d-status').innerHTML = `<span class="dot ${h.removed ? 'gone' : kind(h)}"></span>${esc(statusText)}${favs.has(h.id) ? ' · Favourite' : ''}`;
+    const saleType = esc(h.priceNum ? (h.method || 'Asking price') : (h.method || '—')) + (h.when ? ` · ${esc(when(h.when))}` : '');
+    $('d-facts').innerHTML = [
+      fact('Neighbourhood', esc(h.sub)),
+      fact('Bedrooms', h.beds ? String(h.beds) : ''),
+      fact('Floor area', h.floor ? `${h.floor.toLocaleString('en-NZ')} m²` : '—'),
+      fact('Land', h.land ? `${h.land.toLocaleString('en-NZ')} m²` : '—'),
+      fact('Sale type', saleType, true),
+      fact('Address', esc(h.full), true),
+      fact('Nearest bus stop', h.stop ? `${h.dist.toFixed(1)} km · ${esc(h.stop)} (${esc(h.route)})` : '', true),
+      fact('Property', esc([h.type, h.baths ? `${h.baths} bath` : ''].filter(Boolean).join(' · '))),
+      fact('Listed', plainDate(h.listed)),
+    ].join('');
+    $('d-open').href = h.url;
+    $('d-star').setAttribute('aria-pressed', String(favs.has(h.id)));
+    $('d-star').setAttribute('aria-label', favs.has(h.id) ? 'Remove from favourites' : 'Add to favourites');
+    $('d-src').textContent = `realestate.co.nz listing ${h.id}`;
+  }
+
+  let lastFocus = null;
+  function openSheet(id, pan) {
+    const h = byId.get(id); if (!h) return;
+    current = id; lastFocus = document.activeElement;
+    fillSheet(h); gallery(h);
+    $('scrim').hidden = false; $('sheet').hidden = false;
+    requestAnimationFrame(() => { $('scrim').classList.add('open'); $('sheet').classList.add('open'); });
+    $('sheet').querySelector('.sheet-scroll').scrollTop = 0;
+    $('d-close').focus({ preventScroll: true });
+    if (pan) map.setView([h.lat, h.lng], Math.max(map.getZoom(), 15), { animate: false });
+    try { history.replaceState(null, '', '#h' + id); } catch (e) {}
+  }
+  function closeSheet() {
+    if ($('sheet').hidden) return;
+    $('scrim').classList.remove('open'); $('sheet').classList.remove('open');
+    setTimeout(() => { $('scrim').hidden = true; $('sheet').hidden = true; }, 220);
+    current = null;
+    try { history.replaceState(null, '', location.pathname); } catch (e) {}
+    lastFocus?.focus?.({ preventScroll: true });
+  }
+  $('d-close').onclick = closeSheet;
+  $('scrim').onclick = closeSheet;
+
+  $('d-star').onclick = () => {
+    const id = current; if (!id) return;
+    favs.has(id) ? favs.delete(id) : favs.add(id);
+    store.set(FAV_KEY, [...favs]);
+    fillSheet(byId.get(id));
+    renderAll();
+  };
+
+  function toast(msg) { const t = $('toast'); t.textContent = msg; t.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => { t.hidden = true; }, 2200); }
+  $('d-share').onclick = async () => {
+    const h = byId.get(current); if (!h) return;
+    const price = h.priceNum ? money(h.priceNum) : h.est ? `est. ${money(h.est[1])}` : h.method;
+    const payload = { title: h.addr, text: `${h.full} · ${h.beds} bed · ${price}`, url: h.url };
+    if (navigator.share) {
+      try { await navigator.share(payload); } catch (e) { /* cancelled */ }
+      return;
+    }
+    try { await navigator.clipboard.writeText(h.url); toast('Link copied'); } catch (e) { toast(h.url); }
+  };
+
+  // ---------- fullscreen viewer ----------
+  function openViewer(h, start) {
+    const list = photos[h.id] || [];
+    const strip = $('v-strip');
+    strip.innerHTML = list.map((m, i) => `<img src="${IMG(h.id, m, 'scale.1600x1067')}" alt="Photo ${i + 1} of ${esc(h.addr)}" loading="${Math.abs(i - start) < 2 ? 'eager' : 'lazy'}">`).join('');
+    $('viewer').hidden = false;
+    const upd = () => { $('v-count').textContent = `${Math.round(strip.scrollLeft / strip.clientWidth) + 1} / ${list.length}`; };
+    strip.onscroll = upd;
+    requestAnimationFrame(() => { strip.scrollLeft = start * strip.clientWidth; upd(); });
+    try { $('viewer').requestFullscreen?.().catch(() => {}); } catch (e) {}
+    $('v-close').focus();
+  }
+  function closeViewer() {
+    if ($('viewer').hidden) return;
+    $('viewer').hidden = true; $('v-strip').innerHTML = '';
+    if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
+  }
+  $('v-close').onclick = closeViewer;
+  $('v-prev').onclick = () => { const s = $('v-strip'); s.scrollBy({ left: -s.clientWidth, behavior: 'smooth' }); };
+  $('v-next').onclick = () => { const s = $('v-strip'); s.scrollBy({ left: s.clientWidth, behavior: 'smooth' }); };
+  document.addEventListener('fullscreenchange', () => { if (!document.fullscreenElement && !$('viewer').hidden) closeViewer(); });
+  document.addEventListener('keydown', (e) => {
+    if (!$('viewer').hidden) {
+      if (e.key === 'Escape') closeViewer();
+      if (e.key === 'ArrowRight') $('v-next').click();
+      if (e.key === 'ArrowLeft') $('v-prev').click();
+      return;
+    }
+    if (e.key === 'Escape') closeSheet();
+  });
+
+  // ---------- load ----------
+  Promise.all([
+    fetch('data/routes.json').then((r) => r.json()),
+    fetch('data/houses.json', { cache: 'no-cache' }).then((r) => r.ok ? r.json() : { houses: [] }).catch(() => ({ houses: [] })),
+  ]).then(([routes, d]) => {
+    drawRoutes(routes);
+    data = d; houses = d.houses || []; byId = new Map(houses.map((h) => [h.id, h]));
+    for (const id of [...favs]) if (!byId.has(id)) favs.delete(id);
+    $('stamp').textContent = d.updated
+      ? `Updated ${dateFmt.format(new Date(d.updated + 'T20:00:00+13:00'))} · ${d.active.toLocaleString('en-NZ')} for sale`
+      : 'First search runs tonight at 8pm';
+    renderAll();
+    const m = location.hash.match(/^#h(\d+)$/);
+    if (m && byId.has(m[1])) openSheet(m[1], true);
+    (window.requestIdleCallback || setTimeout)(loadPhotos, 1500);
+  });
+})();
+</script>
+</body>
+</html>
