@@ -32,6 +32,8 @@
   --fav-ink: #3a2900;
   --gone: #a7afad;
   --gone-ink: #ffffff;
+  --up: #1d7a3e;
+  --down: #b3402f;
   --shadow: 0 10px 30px rgba(16, 30, 28, .16);
   --display: "Bricolage Grotesque", "Avenir Next", "Segoe UI", system-ui, sans-serif;
   --body: "Atkinson Hyperlegible", "Helvetica Neue", Arial, system-ui, sans-serif;
@@ -43,6 +45,7 @@
     --accent: #4bb9ae; --accent-ink: #06201d;
     --new: #8ed88f; --new-ink: #0b2b0c; --old: #5a8ef0; --old-ink: #08142b;
     --fav: #e8c05a; --fav-ink: #2a1d00; --gone: #5f6a68; --gone-ink: #e6eeec;
+    --up: #6fd08f; --down: #f08a78;
     --shadow: 0 10px 30px rgba(0, 0, 0, .5);
     color-scheme: dark;
   }
@@ -52,6 +55,7 @@
   --accent: #4bb9ae; --accent-ink: #06201d;
   --new: #8ed88f; --new-ink: #0b2b0c; --old: #5a8ef0; --old-ink: #08142b;
   --fav: #e8c05a; --fav-ink: #2a1d00; --gone: #5f6a68; --gone-ink: #e6eeec;
+  --up: #6fd08f; --down: #f08a78;
   --shadow: 0 10px 30px rgba(0, 0, 0, .5);
   color-scheme: dark;
 }
@@ -148,6 +152,9 @@ td.mark { width: 44px; }
 td.addr { font-weight: 700; min-width: 180px; }
 .muted { color: var(--muted); }
 .est { color: var(--muted); font-style: italic; }
+.trend { font-size: 12px; font-weight: 700; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.trend.up { color: var(--up); } .trend.down { color: var(--down); } .trend.flat { color: var(--muted); }
+td .trend { margin-left: 6px; }
 .tag { display: inline-block; font: 700 10px/1.5 var(--body); font-style: normal; letter-spacing: .06em; text-transform: uppercase; padding: 0 5px; border-radius: 4px; border: 1px solid var(--line); color: var(--muted); vertical-align: 1px; }
 .empty { padding: 40px 16px; text-align: center; color: var(--muted); }
 
@@ -252,7 +259,7 @@ footer p { margin: 0; max-width: 70ch; }
 <section class="list wrap" aria-labelledby="list-title">
   <div class="list-head">
     <h2 id="list-title">Houses</h2>
-    <p id="list-sub">4+ bedrooms · $900k–$1.5M · within 3 km of a Kristin bus stop</p>
+    <p id="list-sub">4+ bedrooms · no townhouses · $900k–$1.5M · within 3 km of a Kristin bus stop</p>
   </div>
   <div class="table-scroll">
     <table id="tbl">
@@ -272,7 +279,7 @@ footer p { margin: 0; max-width: 70ch; }
 </section>
 
 <footer class="wrap">
-  <p>Listings from realestate.co.nz, searched daily at 8pm NZ time. The $900k–$1.5M range is checked against the advertised price; without one, against the realestate.co.nz estimate (grey, “est”); without that, against the council valuation (grey, “CV”). Listings with none of these are left out. Distance is straight-line to the nearest morning (to-school) stop, and Kristin School counts as a stop. Dashed route lines are the non-stop run to school. Favourites are saved on this device.</p>
+  <p>Listings from realestate.co.nz, searched daily at 8pm NZ time. The $900k–$1.5M range is checked against the advertised price; without one, against the realestate.co.nz estimate (grey, “est”); without that, against the council valuation (grey, “CV”). Listings with none of these are left out. Distance is straight-line to the nearest morning (to-school) stop, and Kristin School counts as a stop. Dashed route lines are the non-stop run to school. Suburb arrows compare the median sale price of the last 12 months with the 12 months before (4+ bedroom sales when there are enough, otherwise all sales); within ±2% counts as flat. Favourites are saved on this device.</p>
 </footer>
 
 <div class="scrim" id="scrim" hidden></div>
@@ -335,7 +342,15 @@ footer p { margin: 0; max-width: 70ch; }
   let favs = new Set(store.get(FAV_KEY, []));
   const show = Object.assign({ new: true, old: true, fav: true, gone: true }, store.get(SHOW_KEY, {}));
 
-  let data = { houses: [] }, houses = [], byId = new Map(), photos = null, photosP = null;
+  let data = { houses: [] }, houses = [], byId = new Map(), photos = null, photosP = null, trends = {};
+  const trendOf = (h) => trends[h.subSlug] || null;
+  const pctTxt = (p) => `${Math.abs(p).toFixed(1)}%`;
+  function trendBadge(h) {
+    const t = trendOf(h); if (!t || !t.dir) return '';
+    const arrow = { up: '↗', down: '↘', flat: '→' }[t.dir];
+    const word = { up: 'rising', down: 'falling', flat: 'flat' }[t.dir];
+    return `<span class="trend ${t.dir}" title="${esc(h.sub)} median sale price ${word}: ${t.pct > 0 ? '+' : t.pct < 0 ? '−' : ''}${pctTxt(t.pct)} over 12 months (${esc(t.basis)})">${arrow} ${t.dir === 'flat' ? '' : (t.pct > 0 ? '+' : '−')}${pctTxt(t.pct)}</span>`;
+  }
   let sort = { col: 'mark', dir: 1 };
   let current = null;
 
@@ -541,7 +556,7 @@ footer p { margin: 0; max-width: 70ch; }
       return `<tr data-id="${h.id}" class="${h.removed ? 'gone' : ''}" tabindex="0">
         <td class="mark"><span class="markcell">${mark}</span></td>
         <td class="addr">${esc(h.addr)}</td>
-        <td>${esc(h.sub)}</td>
+        <td>${esc(h.sub)}${trendBadge(h)}</td>
         <td class="num">${h.beds || '—'}</td>
         <td class="num">${h.floor ? h.floor.toLocaleString('en-NZ') : '<span class="muted">—</span>'}</td>
         <td class="num">${priceCell(h)}</td></tr>`;
@@ -610,6 +625,7 @@ footer p { margin: 0; max-width: 70ch; }
     const saleType = esc(method(h) || (h.priceNum ? 'Asking price' : '—')) + (h.when ? ` · ${esc(when(h.when))}` : '');
     $('d-facts').innerHTML = [
       fact('Neighbourhood', esc(h.sub)),
+      fact('Suburb prices', (() => { const t = trendOf(h); if (!t) return ''; if (!t.dir) return '<span class="muted">Not enough sales to tell</span>'; return `${trendBadge(h)} <span class="muted" style="font-weight:400">median sale price over 12 months · ${money(t.prev)} → ${money(t.cur)} · ${esc(t.basis)}, ${t.n} sold</span>`; })(), true),
       fact('Bedrooms', h.beds ? String(h.beds) : ''),
       fact('Floor area', h.floor ? `${h.floor.toLocaleString('en-NZ')} m²` : '—'),
       fact('Land', h.land ? `${h.land.toLocaleString('en-NZ')} m²` : '—'),
@@ -705,7 +721,9 @@ footer p { margin: 0; max-width: 70ch; }
     fetch('data/houses.json', { cache: 'no-cache' }).then((r) => r.ok ? r.json() : { houses: [] }).catch(() => ({ houses: [] })),
     fetch('data/route_paths.json', { cache: 'no-cache' }).then((r) => r.ok ? r.json() : null).catch(() => null),
     fetch('data/stop_addresses.json', { cache: 'no-cache' }).then((r) => r.ok ? r.json() : null).catch(() => null),
-  ]).then(([routes, d, paths, addrs]) => {
+    fetch('data/suburbs.json', { cache: 'no-cache' }).then((r) => r.ok ? r.json() : null).catch(() => null),
+  ]).then(([routes, d, paths, addrs, subs]) => {
+    trends = (subs && subs.suburbs) || {};
     drawRoutes(routes, paths, addrs);
     data = d; houses = d.houses || [];
     houses.forEach((h) => { h.addr = (h.addr || '').trim(); h.full = (h.full || '').trim(); });

@@ -31,7 +31,7 @@ DATA = os.path.join(ROOT, "data")
 API = "https://platform.realestate.co.nz/search/v1"
 OSRM = "https://router.project-osrm.org/route/v1/driving/"
 NZ = ZoneInfo("Pacific/Auckland")
-SCHEMA = 3  # bump when the matching rules change: non-matching houses are dropped, not greyed
+SCHEMA = 4  # bump when the matching rules change: non-matching houses are dropped, not greyed
 
 RADIUS_KM = 3.0
 PRICE_MIN, PRICE_MAX, BEDS_MIN = 900_000, 1_500_000, 4
@@ -42,6 +42,10 @@ MAX_PHOTOS = 40
 WORKERS = 6
 # realestate.co.nz title types: 1 Freehold, 2 Leasehold, 3 Cross Lease, 4 Unit Title, 5 Company
 NON_FREEHOLD = {2, 3, 4, 5}
+EXCLUDED_TYPES = {"Townhouse"}
+# Suburb trend: median sale price, last 12 months vs the 12 months before.
+TREND_MIN_SALES = 10
+TREND_FLAT_PCT = 2.0
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
@@ -348,6 +352,7 @@ def base_record(d, stops):
         "dist": round(dist, 2),
         "route": stop[2] if stop else None,
         "stop": stop[3] if stop else None,
+        "subSlug": ad.get("suburb-display-fq-slug") or "_".join((ad.get("suburb-fq-slug") or "").split("_")[:3]),
         "listed": (a.get("published-date") or "")[:10],
         "_sid": a.get("property-short-id"),
         "_photos": [p["md5"] for p in sorted(a.get("photos") or [], key=lambda p: p.get("order", 0))],
@@ -403,6 +408,62 @@ def fetch_detail(lid):
     except Exception as e:  # noqa: BLE001
         print("detail failed", lid, e, file=sys.stderr)
         return None
+
+
+def suburb_ids():
+    """realestate.co.nz suburb ids keyed by fq-slug, plus Auckland suburb names as a fallback."""
+    j = get("/locations")
+    by_slug, by_name = {}, {}
+    for i in j.get("included") or []:
+        if i.get("type") != "suburbs":
+            continue
+        a = i.get("attributes") or {}
+        by_slug[a.get("fq-slug")] = i["id"]
+        if (a.get("fq-slug") or "").startswith("auckland_"):
+            by_name.setdefault((a.get("title") or "").lower(), i["id"])
+    return by_slug, by_name
+
+
+def sold_medians(sid, beds_min=None):
+    params = {"filter[suburb][]": sid, "meta[aggs]": "medianSoldPriceAnnually,propertiesSoldAnnually", "page[limit]": 0}
+    if beds_min:
+        params["filter[bedroomsMin]"] = beds_min
+    aggs = (get("/properties", params).get("meta") or {}).get("aggs") or {}
+    med = sorted(aggs.get("medianSoldPriceAnnually") or [], key=lambda x: x["key"])
+    cnt = {x["key"]: x["value"] for x in aggs.get("propertiesSoldAnnually") or []}
+    if len(med) < 2:
+        return None
+    prev, cur = med[-2], med[-1]
+    return {"prev": prev["value"], "cur": cur["value"], "nPrev": cnt.get(prev["key"], 0), "n": cnt.get(cur["key"], 0),
+            "to": cur["key"]}
+
+
+def suburb_trend(sid):
+    """Prefer 4+ bedroom sales; fall back to all sales when there are too few."""
+    for beds, basis in ((BEDS_MIN, f"{BEDS_MIN}+ bedroom sales"), (None, "all sales")):
+        m = sold_medians(sid, beds)
+        if m and m["prev"] and m["cur"] and min(m["n"], m["nPrev"]) >= TREND_MIN_SALES:
+            pct = round((m["cur"] - m["prev"]) / m["prev"] * 100, 1)
+            m.update(pct=pct, basis=basis,
+                     dir="up" if pct >= TREND_FLAT_PCT else "down" if pct <= -TREND_FLAT_PCT else "flat")
+            return m
+    return {"dir": None, "basis": "not enough sales"}
+
+
+def update_suburb_trends(houses, today):
+    by_slug, by_name = suburb_ids()
+    wanted = {}
+    for h in houses:
+        sid = by_slug.get(h.get("subSlug")) or by_name.get((h.get("sub") or "").lower())
+        if sid:
+            wanted[h.get("subSlug") or h["sub"]] = (sid, h["sub"])
+    out = {}
+    with ThreadPoolExecutor(WORKERS) as ex:
+        keys = list(wanted)
+        for k, t in zip(keys, ex.map(lambda k: suburb_trend(wanted[k][0]), keys)):
+            out[k] = {"name": wanted[k][1], **t}
+    print(f"suburb trends for {len(out)} suburbs")
+    save("suburbs.json", {"asof": today, "suburbs": out})
 
 
 def set_output(**kv):
@@ -491,7 +552,7 @@ def main():
     current = {}
     for lid, rec in in_range.items():
         tt = titles.get(lid)
-        if tt in NON_FREEHOLD:
+        if tt in NON_FREEHOLD or rec["type"] in EXCLUDED_TYPES:
             continue
         if lid in known:
             rec["freehold"] = known[lid].get("freehold")
@@ -563,6 +624,10 @@ def main():
         "houses": houses,
     })
     save("photos.json", photos)
+    try:
+        update_suburb_trends(houses, today)
+    except Exception as e:  # noqa: BLE001
+        print("suburb trends skipped:", e, file=sys.stderr)
     set_output(changed="true", new_count=new_today, date=today)
 
 
