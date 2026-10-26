@@ -3,7 +3,7 @@ name: Daily house search
 on:
   schedule:
     # 8pm New Zealand time: 07:00 UTC during NZDT, 08:00 UTC during NZST.
-    # The script skips runs that land before 8pm NZ.
+    # The script skips runs that land before 8pm NZ or after tonight's update.
     - cron: "0 7 * * *"
     - cron: "0 8 * * *"
   workflow_dispatch:
@@ -24,13 +24,22 @@ concurrency:
 jobs:
   search:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+
+      # Valuation and title lookups are cached between runs instead of committed.
+      - uses: actions/cache@v4
+        with:
+          path: |
+            data/valuations.json
+            data/titles.json
+          key: lookups-${{ github.run_id }}
+          restore-keys: lookups-
 
       - name: Search listings
         id: search
@@ -44,6 +53,7 @@ jobs:
           git config user.name "house-hunt bot"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add data/houses.json data/photos.json
+          [ -f data/route_paths.json ] && git add data/route_paths.json
           git commit -m "Listings ${{ steps.search.outputs.date }}: ${{ steps.search.outputs.new_count }} new"
           git pull --rebase
           git push

@@ -94,6 +94,7 @@ h1 { font: 700 22px/1.1 var(--display); letter-spacing: -.01em; margin: 0; text-
 /* Map */
 .map-band { position: relative; }
 #map { height: clamp(340px, 60vh, 680px); background: var(--bg); z-index: 1; }
+@media (min-width: 860px) { #map { height: clamp(520px, calc(100vh - 150px), 1100px); } }
 .map-note {
   position: absolute; z-index: 500; left: max(12px, env(safe-area-inset-left, 0px)); bottom: 12px;
   background: var(--surface); color: var(--muted); border: 1px solid var(--line);
@@ -145,6 +146,7 @@ td.mark { width: 44px; }
 td.addr { font-weight: 700; min-width: 180px; }
 .muted { color: var(--muted); }
 .est { color: var(--muted); font-style: italic; }
+.tag { display: inline-block; font: 700 10px/1.5 var(--body); font-style: normal; letter-spacing: .06em; text-transform: uppercase; padding: 0 5px; border-radius: 4px; border: 1px solid var(--line); color: var(--muted); vertical-align: 1px; }
 .empty { padding: 40px 16px; text-align: center; color: var(--muted); }
 
 /* Detail sheet */
@@ -268,7 +270,7 @@ footer p { margin: 0; max-width: 70ch; }
 </section>
 
 <footer class="wrap">
-  <p>Listings from realestate.co.nz, searched daily at 8pm NZ time. Price in grey is the realestate.co.nz estimate for listings without an advertised price. Distance is straight-line to the nearest stop. Favourites are saved on this device.</p>
+  <p>Listings from realestate.co.nz, searched daily at 8pm NZ time. The $900k–$1.5M range is checked against the advertised price; without one, against the realestate.co.nz estimate (grey, “est”); without that, against the council valuation (grey, “CV”). Listings with none of these are left out. Distance is straight-line to the nearest stop, and Kristin School counts as a stop. Dashed route lines are the non-stop run to school. Favourites are saved on this device.</p>
 </footer>
 
 <div class="scrim" id="scrim" hidden></div>
@@ -350,8 +352,10 @@ footer p { margin: 0; max-width: 70ch; }
   const kind = (h) => h.removed ? 'gone' : h.first === data.updated ? 'new' : 'old';
   const visible = (h) => show[status(h)];
   // Estimates far outside the search range usually come from a mismatched property record (a lot or a whole site).
-  const okEst = (e) => Array.isArray(e) && e[1] && (e[3] ?? 5) >= 3 && e[1] >= 630000 && e[1] <= 3000000;
-  const priceVal = (h) => h.priceNum || (h.est ? h.est[1] : null);
+  // Price basis: advertised price, else realestate.co.nz estimate, else council valuation (CV).
+  const basis = (h) => h.priceNum ? 'price' : h.est ? 'est' : h.cv ? 'cv' : null;
+  const priceVal = (h) => h.priceNum || (h.est ? h.est[1] : h.cv ? h.cv[0] : null);
+  const cvYear = (h) => (h.cv && h.cv[1] ? h.cv[1].slice(0, 4) : '');
   const method = (h) => { const m = h.method || ''; return /^[A-Z]{2,}$/.test(m) ? m : m.charAt(0).toUpperCase() + m.slice(1).toLowerCase(); };
 
   // ---------- map ----------
@@ -387,13 +391,33 @@ footer p { margin: 0; max-width: 70ch; }
       .replace(/\s+PM$/, '').replace(/\s+\d{1,2}[.:]\d{2}\s*am$/i, '').replace(/\s+/g, ' ').trim();
   }
 
-  function drawRoutes(routes) {
+  function decode(str) {
+    const pts = []; let i = 0, lat = 0, lng = 0;
+    while (i < str.length) {
+      for (const k of [0, 1]) {
+        let shift = 0, result = 0, b;
+        do { b = str.charCodeAt(i++) - 63; result |= (b & 0x1f) << shift; shift += 5; } while (b >= 0x20);
+        const d = result & 1 ? ~(result >> 1) : result >> 1;
+        if (k === 0) lat += d; else lng += d;
+      }
+      pts.push([lat / 1e5, lng / 1e5]);
+    }
+    return pts;
+  }
+
+  function drawRoutes(routes, paths) {
     const school = [-36.743365, 174.691607];
     const seen = new Set();
     routes.forEach((r) => {
-      const path = r.am.filter((s) => cleanStop(s[0]) !== 'Kristin School').map((s) => [s[1], s[2]]);
-      L.polyline(path, { pane: 'routes', color: r.color, weight: 3, opacity: .28, lineJoin: 'round', interactive: true })
-        .bindTooltip(`${r.code} · ${r.name}`, { sticky: true, className: 'route-tip' }).addTo(routeLayer);
+      const tip = `${r.code} · ${r.name}`;
+      const pickups = r.am.filter((s) => cleanStop(s[0]) !== 'Kristin School').map((s) => [s[1], s[2]]);
+      const p = paths && paths[r.code];
+      const pickupPath = p && p.pickup ? decode(p.pickup) : pickups;
+      const expressPath = p && p.express ? decode(p.express) : [pickups[pickups.length - 1], school];
+      L.polyline(pickupPath, { pane: 'routes', color: r.color, weight: 3, opacity: .3, lineJoin: 'round' })
+        .bindTooltip(tip, { sticky: true, className: 'route-tip' }).addTo(routeLayer);
+      L.polyline(expressPath, { pane: 'routes', color: r.color, weight: 2, opacity: .3, dashArray: '2 7', lineCap: 'round' })
+        .bindTooltip(`${tip} · non-stop to Kristin`, { sticky: true, className: 'route-tip' }).addTo(routeLayer);
       [...r.am, ...r.pm].forEach((s) => {
         const name = cleanStop(s[0]);
         const key = s[1].toFixed(4) + ',' + s[2].toFixed(4);
@@ -430,6 +454,7 @@ footer p { margin: 0; max-width: 70ch; }
   function pinLabel(h) {
     if (h.priceNum) return { t: short(h.priceNum), est: false };
     if (h.est) return { t: '~' + short(h.est[1]), est: true };
+    if (h.cv) return { t: 'CV ' + short(h.cv[0]), est: true };
     return { t: method(h) || '—', est: true };
   }
   function drawPins() {
@@ -483,7 +508,8 @@ footer p { margin: 0; max-width: 70ch; }
   }
   function priceCell(h) {
     if (h.priceNum) return money(h.priceNum);
-    if (h.est) return `<span class="est" title="realestate.co.nz estimate">≈ ${money(h.est[1])}</span>`;
+    if (h.est) return `<span class="est" title="realestate.co.nz estimate">≈ ${money(h.est[1])} <span class="tag">est</span></span>`;
+    if (h.cv) return `<span class="est" title="Council valuation ${cvYear(h)}">${money(h.cv[0])} <span class="tag">CV</span></span>`;
     return `<span class="muted">${esc(method(h))}</span>`;
   }
   function renderTable() {
@@ -550,14 +576,17 @@ footer p { margin: 0; max-width: 70ch; }
     } else if (h.est) {
       $('d-price').className = 'price est';
       $('d-price').textContent = h.est[0] && h.est[2] ? `${short(h.est[0])} – ${short(h.est[2])}` : '≈ ' + money(h.est[1]);
-      $('d-price-sub').textContent = `Estimate ≈ ${money(h.est[1])} · not an asking price`;
+      $('d-price-sub').innerHTML = `<span class="tag">Estimate</span> realestate.co.nz, ≈ ${money(h.est[1])} · no advertised price`;
+    } else if (h.cv) {
+      $('d-price').className = 'price est'; $('d-price').textContent = money(h.cv[0]);
+      $('d-price-sub').innerHTML = `<span class="tag">CV</span> council valuation${cvYear(h) ? ' ' + cvYear(h) : ''} · no advertised price or estimate`;
     } else {
       $('d-price').className = 'price est'; $('d-price').textContent = method(h) || 'Price on enquiry';
       $('d-price-sub').textContent = 'No price or estimate available';
     }
     $('d-addr').textContent = h.addr;
     $('d-fh').hidden = h.freehold !== true;
-    const statusText = st === 'gone' || h.removed ? `Off market since ${plainDate(h.removed)}` : h.first === data.updated ? 'New today' : `First seen ${plainDate(h.first)}`;
+    const statusText = h.removed ? `${h.gone === 'filter' ? 'No longer in price range' : 'Off market'} since ${plainDate(h.removed)}` : h.first === data.updated ? 'New today' : `First seen ${plainDate(h.first)}`;
     $('d-status').innerHTML = `<span class="dot ${h.removed ? 'gone' : kind(h)}"></span>${esc(statusText)}${favs.has(h.id) ? ' · Favourite' : ''}`;
     const saleType = esc(method(h) || (h.priceNum ? 'Asking price' : '—')) + (h.when ? ` · ${esc(when(h.when))}` : '');
     $('d-facts').innerHTML = [
@@ -611,7 +640,7 @@ footer p { margin: 0; max-width: 70ch; }
   function toast(msg) { const t = $('toast'); t.textContent = msg; t.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => { t.hidden = true; }, 2200); }
   $('d-share').onclick = async () => {
     const h = byId.get(current); if (!h) return;
-    const price = h.priceNum ? money(h.priceNum) : h.est ? `est. ${money(h.est[1])}` : method(h);
+    const price = h.priceNum ? money(h.priceNum) : h.est ? `est. ${money(h.est[1])}` : h.cv ? `CV ${money(h.cv[0])}` : method(h);
     const payload = { title: h.addr, text: `${h.full} · ${h.beds} bed · ${price}`, url: h.url };
     if (navigator.share) {
       try { await navigator.share(payload); } catch (e) { /* cancelled */ }
@@ -655,10 +684,11 @@ footer p { margin: 0; max-width: 70ch; }
   Promise.all([
     fetch('data/routes.json').then((r) => r.json()),
     fetch('data/houses.json', { cache: 'no-cache' }).then((r) => r.ok ? r.json() : { houses: [] }).catch(() => ({ houses: [] })),
-  ]).then(([routes, d]) => {
-    drawRoutes(routes);
+    fetch('data/route_paths.json', { cache: 'no-cache' }).then((r) => r.ok ? r.json() : null).catch(() => null),
+  ]).then(([routes, d, paths]) => {
+    drawRoutes(routes, paths);
     data = d; houses = d.houses || [];
-    houses.forEach((h) => { h.addr = (h.addr || '').trim(); h.full = (h.full || '').trim(); if (!okEst(h.est)) h.est = null; });
+    houses.forEach((h) => { h.addr = (h.addr || '').trim(); h.full = (h.full || '').trim(); });
     byId = new Map(houses.map((h) => [h.id, h]));
     for (const id of [...favs]) if (!byId.has(id)) favs.delete(id);
     $('stamp').textContent = d.updated
