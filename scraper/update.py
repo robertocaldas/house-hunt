@@ -161,6 +161,60 @@ def update_route_paths(routes):
         save("route_paths.json", out)
 
 
+NOMINATIM = "https://nominatim.openstreetmap.org/reverse"
+STREETISH = re.compile(r"^\d+[A-Za-z]?\s+\D+\b(Road|Rd|Street|St|Avenue|Ave|Drive|Dr|Place|Pl|Lane|Ln|Crescent|Cres|Terrace|"
+                       r"Tce|Way|Grove|Highway|Hwy|Parade|Rise|Close|Court|Track|Loop|Parkway)$", re.I)
+
+
+def stop_key(lat, lng):
+    return f"{lat:.6f},{lng:.6f}"
+
+
+def reverse_geocode(lat, lng):
+    url = f"{NOMINATIM}?format=jsonv2&addressdetails=1&zoom=18&lat={lat:.6f}&lon={lng:.6f}"
+    req = urllib.request.Request(url, headers={
+        "User-Agent": "kristin-bus-homes/1.0 (https://github.com/robertocaldas/house-hunt)",
+        "Accept-Language": "en-NZ,en",
+    })
+    with urllib.request.urlopen(req, timeout=30) as r:
+        return json.loads(r.read().decode("utf-8")).get("address") or {}
+
+
+def update_stop_addresses(routes, budget_s=900):
+    """Street address for every stop (OpenStreetMap reverse geocoding, cached)."""
+    addrs = load("stop_addresses.json", {})
+    todo, seen = [], set()
+    for r in routes:
+        for g in ("am", "pm"):
+            for name, lat, lng in r[g]:
+                k = stop_key(lat, lng)
+                if k not in addrs and k not in seen:
+                    seen.add(k)
+                    todo.append((k, clean_stop(name), lat, lng))
+    if not todo:
+        return
+    print(f"geocoding {len(todo)} stops")
+    start = time.time()
+    for k, name, lat, lng in todo:
+        if time.time() - start > budget_s:
+            print("geocoding paused; continues next run")
+            break
+        try:
+            a = reverse_geocode(lat, lng)
+        except Exception as e:  # noqa: BLE001
+            print("geocode failed", name, e, file=sys.stderr)
+            time.sleep(2)
+            continue
+        street = name if STREETISH.match(name) else " ".join(x for x in (a.get("house_number"), a.get("road")) if x)
+        area = a.get("suburb") or a.get("neighbourhood") or a.get("city_district") or a.get("hamlet") or ""
+        town = a.get("city") or a.get("town") or a.get("village") or "Auckland"
+        tail = " ".join(x for x in (town, a.get("postcode")) if x)
+        parts = [street or name, area if area and area != town else "", tail]
+        addrs[k] = ", ".join(x for x in parts if x)
+        time.sleep(1.1)  # Nominatim usage policy: max 1 request per second
+    save("stop_addresses.json", addrs)
+
+
 # ---------------------------------------------------------------- listings
 
 def search_boxes(stops, cell=0.03):
@@ -384,6 +438,10 @@ def main():
         update_route_paths(routes)
     except Exception as e:  # noqa: BLE001
         print("route paths skipped:", e, file=sys.stderr)
+    try:
+        update_stop_addresses(routes)
+    except Exception as e:  # noqa: BLE001
+        print("stop addresses skipped:", e, file=sys.stderr)
 
     boxes = search_boxes(stops)
     found = search_all(boxes)
