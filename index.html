@@ -349,6 +349,7 @@ footer p { margin: 0; max-width: 70ch; }
   const kind = (h) => h.removed ? 'gone' : h.first === data.updated ? 'new' : 'old';
   const visible = (h) => show[status(h)];
   const priceVal = (h) => h.priceNum || (h.est ? h.est[1] : null);
+  const method = (h) => { const m = h.method || ''; return /^[A-Z]{2,}$/.test(m) ? m : m.charAt(0).toUpperCase() + m.slice(1).toLowerCase(); };
 
   // ---------- map ----------
   const dark = () => document.documentElement.dataset.theme ? document.documentElement.dataset.theme === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
@@ -425,7 +426,7 @@ footer p { margin: 0; max-width: 70ch; }
   function pinLabel(h) {
     if (h.priceNum) return { t: short(h.priceNum), est: false };
     if (h.est) return { t: '~' + short(h.est[1]), est: true };
-    return { t: h.method || '—', est: true };
+    return { t: method(h) || '—', est: true };
   }
   function drawPins() {
     pinLayer.clearLayers();
@@ -478,7 +479,7 @@ footer p { margin: 0; max-width: 70ch; }
   function priceCell(h) {
     if (h.priceNum) return money(h.priceNum);
     if (h.est) return `<span class="est" title="realestate.co.nz estimate">≈ ${money(h.est[1])}</span>`;
-    return `<span class="muted">${esc(h.method)}</span>`;
+    return `<span class="muted">${esc(method(h))}</span>`;
   }
   function renderTable() {
     const rows = houses.filter(visible).sort(cmp);
@@ -540,20 +541,20 @@ footer p { margin: 0; max-width: 70ch; }
     const st = status(h);
     if (h.priceNum) {
       $('d-price').className = 'price'; $('d-price').textContent = money(h.priceNum);
-      $('d-price-sub').textContent = h.method && !/^asking price$/i.test(h.method) ? h.method : '';
+      $('d-price-sub').textContent = h.method && !/^asking price$/i.test(h.method) ? method(h) : '';
     } else if (h.est) {
       $('d-price').className = 'price est';
       $('d-price').textContent = h.est[0] && h.est[2] ? `${short(h.est[0])} – ${short(h.est[2])}` : '≈ ' + money(h.est[1]);
       $('d-price-sub').textContent = `Estimate ≈ ${money(h.est[1])} · not an asking price`;
     } else {
-      $('d-price').className = 'price est'; $('d-price').textContent = h.method || 'Price on enquiry';
+      $('d-price').className = 'price est'; $('d-price').textContent = method(h) || 'Price on enquiry';
       $('d-price-sub').textContent = 'No price or estimate available';
     }
     $('d-addr').textContent = h.addr;
     $('d-fh').hidden = h.freehold !== true;
     const statusText = st === 'gone' || h.removed ? `Off market since ${plainDate(h.removed)}` : h.first === data.updated ? 'New today' : `First seen ${plainDate(h.first)}`;
     $('d-status').innerHTML = `<span class="dot ${h.removed ? 'gone' : kind(h)}"></span>${esc(statusText)}${favs.has(h.id) ? ' · Favourite' : ''}`;
-    const saleType = esc(h.priceNum ? (h.method || 'Asking price') : (h.method || '—')) + (h.when ? ` · ${esc(when(h.when))}` : '');
+    const saleType = esc(method(h) || (h.priceNum ? 'Asking price' : '—')) + (h.when ? ` · ${esc(when(h.when))}` : '');
     $('d-facts').innerHTML = [
       fact('Neighbourhood', esc(h.sub)),
       fact('Bedrooms', h.beds ? String(h.beds) : ''),
@@ -605,7 +606,7 @@ footer p { margin: 0; max-width: 70ch; }
   function toast(msg) { const t = $('toast'); t.textContent = msg; t.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => { t.hidden = true; }, 2200); }
   $('d-share').onclick = async () => {
     const h = byId.get(current); if (!h) return;
-    const price = h.priceNum ? money(h.priceNum) : h.est ? `est. ${money(h.est[1])}` : h.method;
+    const price = h.priceNum ? money(h.priceNum) : h.est ? `est. ${money(h.est[1])}` : method(h);
     const payload = { title: h.addr, text: `${h.full} · ${h.beds} bed · ${price}`, url: h.url };
     if (navigator.share) {
       try { await navigator.share(payload); } catch (e) { /* cancelled */ }
