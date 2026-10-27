@@ -365,7 +365,9 @@ def tomtom_to_aia(lat, lng, depart, key):
 def transit_to_aia(lat, lng, depart):
     """Public transport leaving home at `depart`: the earliest arrival, preferring fewer changes."""
     q = urllib.parse.urlencode({"fromPlace": f"{lat:.6f},{lng:.6f}", "toPlace": f"{AIA[0]:.6f},{AIA[1]:.6f}",
-                                "time": depart.isoformat(), "arriveBy": "false"})
+                                "time": depart.isoformat(), "arriveBy": "false",
+                                # allow up to 30 min walking to the first stop and from the last one (default 15)
+                                "maxPreTransitTime": 1800, "maxPostTransitTime": 1800})
     j = ua_json(f"{TRANSITOUS}?{q}")
     its = []
     for it in j.get("itineraries") or []:
@@ -379,7 +381,7 @@ def transit_to_aia(lat, lng, depart):
             "walk": round(sum(l.get("duration", 0) for l in legs if l.get("mode") == "WALK") / 60),
         })
     if not its:
-        return {"none": True}
+        return {"none": True, "v": 2}
     first = min(i["end"] for i in its)
     best = min((i for i in its if (i["end"] - first).total_seconds() <= 180), key=lambda i: (i["transfers"], i["end"]))
     return {"min": round((best["end"] - depart).total_seconds() / 60),
@@ -424,7 +426,8 @@ def update_commutes(recs, cache, now):
             meta["tt"] += 1
             time.sleep(0.25)
 
-    need = [lid for lid in recs if "pt" not in cache[lid]]
+    need = [lid for lid in recs if "pt" not in cache[lid]
+            or (cache[lid]["pt"].get("none") and cache[lid]["pt"].get("v") != 2)]  # retry with longer walks
     print(f"AIA commute: {len(need)} houses need public transport times")
     for lid in need:
         if meta["pt"] >= PT_DAILY_CAP:
