@@ -2,10 +2,11 @@ name: Daily house search
 
 on:
   schedule:
-    # 8pm New Zealand time: 07:00 UTC during NZDT, 08:00 UTC during NZST.
-    # The script skips runs that land before 8pm NZ or after tonight's update.
-    - cron: "0 7 * * *"
-    - cron: "0 8 * * *"
+    # Evening slots from 07:13 to 10:43 UTC: 8:13-11:43pm NZDT, 7:13-10:43pm NZST.
+    # GitHub often starts scheduled runs late or skips them; the first slot that runs
+    # after 8pm NZ does the search and the rest skip (see scraper/update.py).
+    - cron: "13 7-10 * * *"
+    - cron: "43 7-10 * * *"
   workflow_dispatch:
   push:
     branches: [main]
@@ -27,6 +28,8 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: main  # latest data, even when a run waited behind another one
 
       - uses: actions/setup-python@v5
         with:
@@ -39,6 +42,7 @@ jobs:
             data/valuations.json
             data/titles.json
             data/roaddist.json
+            data/lastrun.json
           key: lookups-${{ github.run_id }}
           restore-keys: lookups-
 
@@ -56,5 +60,5 @@ jobs:
           git add data/houses.json data/photos.json
           for f in data/route_paths.json data/stop_addresses.json data/suburbs.json; do if [ -f "$f" ]; then git add "$f"; fi; done
           git commit -m "Listings ${{ steps.search.outputs.date }}: ${{ steps.search.outputs.new_count }} new"
-          git pull --rebase
+          git pull --rebase -X theirs   # on a clash in generated data, keep this run's files
           git push

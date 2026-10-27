@@ -565,16 +565,20 @@ def main():
     today = now.date().isoformat()
     event = os.environ.get("EVENT", "manual")
     force = event in ("push", "workflow_dispatch", "manual") or "--force" in sys.argv
-    if event == "schedule" and now.hour < 20:
-        print(f"Skipping: {now:%H:%M} NZ is before 8pm")
+
+    # GitHub runs scheduled jobs late or drops them, so the workflow has several evening slots.
+    # The first slot after 8pm NZ that actually runs does the search; later slots skip.
+    last8pm = now.replace(hour=20, minute=0, second=0, microsecond=0)
+    if now < last8pm:
+        last8pm -= dt.timedelta(days=1)
+    lastrun = load("lastrun.json", {})
+    searched = lastrun.get("searchedAt")
+    if event == "schedule" and searched and dt.datetime.fromisoformat(searched) >= last8pm:
+        print(f"Skipping: already searched at {searched} (since {last8pm:%a %H:%M})")
         set_output(changed="false", new_count=0, date=today)
         return
 
     prev = load("houses.json", {"houses": []})
-    if event == "schedule" and prev.get("updated") == today and prev.get("updatedAt", "")[11:13] >= "20":
-        print("Skipping: tonight's search already found new houses")
-        set_output(changed="false", new_count=0, date=today)
-        return
     rebuild = prev.get("schema") != SCHEMA  # filter rules changed: drop non-matching houses outright
     photos = load("photos.json", {})
     vals = load("valuations.json", {})
@@ -701,6 +705,8 @@ def main():
 
     save("valuations.json", {k: v for k, v in vals.items() if k in near})
     save("titles.json", {k: v for k, v in titles.items() if k in near})
+    save("lastrun.json", {"searchedAt": now.isoformat(timespec="seconds"), "event": event,
+                          "found": len(current), "new": len(added)})
 
     if not added and not force and not rebuild:
         set_output(changed="false", new_count=0, date=today)
@@ -711,6 +717,8 @@ def main():
         if lid in current:
             cur = current[lid]
             cur["first"] = h.get("first", today)
+            if h.get("firstAt"):
+                cur["firstAt"] = h["firstAt"]
             cur["last"] = today
             cur["removed"], cur["gone"] = None, None
             if cur["_photos"]:
@@ -731,6 +739,7 @@ def main():
     for lid in added:
         rec = current[lid]
         rec["first"], rec["last"], rec["removed"], rec["gone"] = today, today, None, None
+        rec["firstAt"] = now.isoformat(timespec="minutes")
         photos[lid] = rec["_photos"][:MAX_PHOTOS]
         houses.append(rec)
     for h in houses:

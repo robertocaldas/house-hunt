@@ -4,3 +4,4 @@ __pycache__/
 data/valuations.json
 data/titles.json
 data/roaddist.json
+data/lastrun.json
