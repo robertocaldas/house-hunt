@@ -93,7 +93,9 @@ h1 { font: 700 22px/1.1 var(--display); letter-spacing: -.01em; margin: 0; text-
 .chip[aria-pressed="false"] { opacity: .45; }
 .chip b { font-weight: 700; }
 .dot { width: 10px; height: 10px; border-radius: 50%; flex: none; box-shadow: 0 0 0 1.5px var(--surface), 0 0 0 2.5px color-mix(in srgb, var(--ink) 18%, transparent); }
-.dot.new { background: var(--new); } .dot.old { background: var(--old); } .dot.fav { background: var(--fav); } .dot.gone { background: var(--gone); }
+.dot.new { background: var(--new); } .dot.old { background: var(--old); } .dot.fav { background: var(--fav); } .dot.gone, .dot.trash { background: var(--gone); }
+.bin { width: 14px; height: 14px; flex: none; stroke: var(--muted); stroke-width: 2; fill: none; display: block; }
+.markcell .bin { width: 16px; height: 16px; }
 
 /* Map */
 .map-band { position: relative; }
@@ -114,7 +116,8 @@ h1 { font: 700 22px/1.1 var(--display); letter-spacing: -.01em; margin: 0; text-
 .pin.new { background: var(--new); color: var(--new-ink); }
 .pin.old { background: var(--old); color: var(--old-ink); }
 .pin.fav { background: var(--fav); color: var(--fav-ink); }
-.pin.gone { background: var(--gone); color: var(--gone-ink); opacity: .8; }
+.pin.gone, .pin.trash { background: var(--gone); color: var(--gone-ink); opacity: .8; }
+.pin.trash { text-decoration: line-through; }
 .pin.est { font-weight: 400; font-style: italic; }
 .school {
   transform: translate(-50%, -50%); width: 26px; height: 26px; border-radius: 7px;
@@ -203,6 +206,9 @@ td .trend { margin-left: 6px; }
 .star svg { width: 22px; height: 22px; fill: none; stroke: var(--muted); stroke-width: 1.8; }
 .star[aria-pressed="true"] { background: color-mix(in srgb, var(--fav) 18%, var(--surface)); border-color: var(--fav); }
 .star[aria-pressed="true"] svg { fill: var(--fav); stroke: var(--fav); }
+.marks { display: flex; gap: 8px; flex: none; }
+.trash-btn[aria-pressed="true"] { background: color-mix(in srgb, var(--ink) 12%, var(--surface)); border-color: var(--muted); }
+.trash-btn[aria-pressed="true"] svg { stroke: var(--ink); fill: none; }
 .addr-row { display: flex; align-items: center; gap: 8px; }
 .addr-row h3 { font: 700 18px/1.25 var(--display); margin: 0; text-wrap: balance; }
 .checks { width: 100%; min-width: 0; border-collapse: collapse; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; font-variant-numeric: tabular-nums; }
@@ -211,10 +217,10 @@ td .trend { margin-left: 6px; }
 .checks th { position: static; background: none; color: var(--ink); font-size: 14px; text-transform: none; letter-spacing: 0; white-space: normal; font-weight: 700; }
 .checks td.val { color: var(--muted); font-size: 13px; text-align: right; }
 .checks td.mk { width: 40px; text-align: center; }
-.mark { display: inline-grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; border: 1.5px solid currentColor; font: 700 14px/1 var(--body); vertical-align: middle; }
-.mark.ok { color: var(--up); background: color-mix(in srgb, var(--up) 14%, transparent); }
-.mark.unk { color: var(--down); background: color-mix(in srgb, var(--down) 12%, transparent); }
-.mark svg { width: 14px; height: 14px; stroke: currentColor; stroke-width: 3; fill: none; }
+.ck { display: inline-grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; border: 1.5px solid currentColor; font: 700 14px/1 var(--body); vertical-align: middle; }
+.ck.ok { color: var(--up); background: color-mix(in srgb, var(--up) 14%, transparent); }
+.ck.unk { color: var(--down); background: color-mix(in srgb, var(--down) 12%, transparent); }
+.ck svg { width: 14px; height: 14px; stroke: currentColor; stroke-width: 3; fill: none; }
 .status { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); }
 .facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
 .fact { background: var(--surface); padding: 10px 12px; min-width: 0; }
@@ -257,6 +263,7 @@ footer p { margin: 0; max-width: 70ch; }
       <button class="chip" data-k="old" aria-pressed="true"><span class="dot old"></span>Seen before <b id="c-old">–</b></button>
       <button class="chip" data-k="fav" aria-pressed="true"><span class="dot fav"></span>Favourites <b id="c-fav">–</b></button>
       <button class="chip" data-k="gone" aria-pressed="true"><span class="dot gone"></span>Off market <b id="c-gone">–</b></button>
+      <button class="chip" data-k="trash" aria-pressed="true"><svg class="bin" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4.5h6V7M6.5 7l1 13h9l1-13M10 11v5.5M14 11v5.5" stroke-linecap="round" stroke-linejoin="round"/></svg>Trashed <b id="c-trash">–</b></button>
     </div>
   </div>
 </header>
@@ -289,7 +296,7 @@ footer p { margin: 0; max-width: 70ch; }
 </section>
 
 <footer class="wrap">
-  <p>Listings from realestate.co.nz, searched daily at 8pm NZ time. The $900k–$1.5M range is checked against the advertised price; without one, against the realestate.co.nz estimate (grey, “est”); without that, against the council valuation (grey, “CV”). Listings with none of these are left out. Houses must have 2+ bathrooms and 160 m²+ of floor area (the house, not the section); houses whose listing doesn't state these are kept and marked with a red ? in their details. Distance is the driving distance by road to the nearest morning (to-school) stop, and Kristin School counts as a stop. Dashed route lines are the non-stop run to school. Suburb arrows compare the median sale price of the last 12 months with the 12 months before (4+ bedroom sales when there are enough, otherwise all sales); within ±2% counts as flat. Favourites are saved on this device.</p>
+  <p>Listings from realestate.co.nz, searched daily at 8pm NZ time. The $900k–$1.5M range is checked against the advertised price; without one, against the realestate.co.nz estimate (grey, “est”); without that, against the council valuation (grey, “CV”). Listings with none of these are left out. Houses must have 2+ bathrooms and 160 m²+ of floor area (the house, not the section); houses whose listing doesn't state these are kept and marked with a red ? in their details. Distance is the driving distance by road to the nearest morning (to-school) stop, and Kristin School counts as a stop. Dashed route lines are the non-stop run to school. Suburb arrows compare the median sale price of the last 12 months with the 12 months before (4+ bedroom sales when there are enough, otherwise all sales); within ±2% counts as flat. Favourites and trashed houses are saved on this device. Trashed houses stay greyed out for 30 days, like sold ones, then disappear; the Trashed chip hides them straight away.</p>
 </footer>
 
 <div class="scrim" id="scrim" hidden></div>
@@ -304,16 +311,21 @@ footer p { margin: 0; max-width: 70ch; }
           <div class="price" id="d-price"></div>
           <div class="price-sub" id="d-price-sub"></div>
         </div>
-        <button class="star" id="d-star" aria-pressed="false" aria-label="Favourite">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z" stroke-linejoin="round"/></svg>
-        </button>
+        <div class="marks">
+          <button class="star trash-btn" id="d-trash" aria-pressed="false" aria-label="Trash" title="Trash: hide this house">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4.5h6V7M6.5 7l1 13h9l1-13M10 11v5.5M14 11v5.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+          <button class="star" id="d-star" aria-pressed="false" aria-label="Favourite" title="Favourite">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z" stroke-linejoin="round"/></svg>
+          </button>
+        </div>
       </div>
       <div>
         <div class="addr-row"><h3 id="d-addr"></h3></div>
         <div class="status" id="d-status"></div>
       </div>
-      <table class="checks" id="d-checks" aria-label="Requirements"></table>
       <dl class="facts" id="d-facts"></dl>
+      <table class="checks" id="d-checks" aria-label="Requirements"></table>
       <div class="actions">
         <a class="btn primary" id="d-open" target="_blank" rel="noopener">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -344,14 +356,19 @@ footer p { margin: 0; max-width: 70ch; }
   const $ = (id) => document.getElementById(id);
   const NZTZ = 'Pacific/Auckland';
   const IMG = (id, md5, size) => `https://mediaserver.realestate.co.nz/listings/${id}/${md5}.${size}.jpg`;
-  const FAV_KEY = 'kbh:favs', SHOW_KEY = 'kbh:show';
+  const FAV_KEY = 'kbh:favs', TRASH_KEY = 'kbh:trash', SHOW_KEY = 'kbh:show';
+  const TRASH_DAYS = 30;  // trashed houses stay greyed out this long, like sold ones, then disappear
 
   const store = {
     get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (e) { return d; } },
     set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} },
   };
   let favs = new Set(store.get(FAV_KEY, []));
-  const show = Object.assign({ new: true, old: true, fav: true, gone: true }, store.get(SHOW_KEY, {}));
+  const trash = store.get(TRASH_KEY, {});  // id -> date trashed (YYYY-MM-DD)
+  const nzToday = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Pacific/Auckland' }).format(new Date());
+  const daysSince = (d) => Math.round((new Date(nzToday() + 'T12:00:00Z') - new Date(d + 'T12:00:00Z')) / 864e5);
+  const addDays = (d, n) => new Date(new Date(d + 'T12:00:00Z').getTime() + n * 864e5).toISOString().slice(0, 10);
+  const show = Object.assign({ new: true, old: true, fav: true, gone: true, trash: true }, store.get(SHOW_KEY, {}));
 
   let data = { houses: [] }, houses = [], byId = new Map(), photos = null, photosP = null, trends = {};
   const trendOf = (h) => trends[h.subSlug] || null;
@@ -376,7 +393,7 @@ footer p { margin: 0; max-width: 70ch; }
   const when = (s) => { if (!s) return ''; const d = new Date(s); return `${dateFmt.format(d)}, ${timeFmt.format(d).replace(' ', ' ')}`; };
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
-  const status = (h) => favs.has(h.id) ? 'fav' : h.removed ? 'gone' : h.first === data.updated ? 'new' : 'old';
+  const status = (h) => trash[h.id] ? 'trash' : favs.has(h.id) ? 'fav' : h.removed ? 'gone' : h.first === data.updated ? 'new' : 'old';
   const kind = (h) => h.removed ? 'gone' : h.first === data.updated ? 'new' : 'old';
   const visible = (h) => show[status(h)];
   // Estimates far outside the search range usually come from a mismatched property record (a lot or a whole site).
@@ -480,10 +497,10 @@ footer p { margin: 0; max-width: 70ch; }
     }
   }
 
-  const order = { gone: 0, old: 1, new: 2, fav: 3 };
+  const order = { trash: -1, gone: 0, old: 1, new: 2, fav: 3 };
   function drawDots() {
     dotLayer.clearLayers();
-    const colors = { new: css('--new'), old: css('--old'), fav: css('--fav'), gone: css('--gone') };
+    const colors = { new: css('--new'), old: css('--old'), fav: css('--fav'), gone: css('--gone'), trash: css('--gone') };
     const stroke = css('--surface');
     const z = map.getZoom(), base = z <= 10 ? 3.5 : z <= 11 ? 4.5 : 5.5;
     houses.filter(visible).sort((a, b) => order[status(a)] - order[status(b)]).forEach((h) => {
@@ -522,7 +539,7 @@ footer p { margin: 0; max-width: 70ch; }
 
   // ---------- header ----------
   function renderCounts() {
-    const c = { new: 0, old: 0, fav: 0, gone: 0 };
+    const c = { new: 0, old: 0, fav: 0, gone: 0, trash: 0 };
     houses.forEach((h) => { c[status(h)]++; });
     Object.keys(c).forEach((k) => { $('c-' + k).textContent = c[k].toLocaleString('en-NZ'); });
     document.querySelectorAll('.chip').forEach((b) => b.setAttribute('aria-pressed', String(!!show[b.dataset.k])));
@@ -535,7 +552,7 @@ footer p { margin: 0; max-width: 70ch; }
   });
 
   // ---------- table ----------
-  const markRank = (h) => ({ new: 0, fav: 1, old: 2, gone: 3 })[status(h)];
+  const markRank = (h) => ({ new: 0, fav: 1, old: 2, gone: 3, trash: 4 })[status(h)];
   const keyFor = {
     mark: (h) => markRank(h),
     addr: (h) => h.addr.toLowerCase(),
@@ -557,14 +574,17 @@ footer p { margin: 0; max-width: 70ch; }
     if (h.cv) return `<span class="est" title="Council valuation ${cvYear(h)}">${money(h.cv[0])} <span class="tag">CV</span></span>`;
     return `<span class="muted">${esc(method(h))}</span>`;
   }
+  const binIcon = '<svg class="bin" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4.5h6V7M6.5 7l1 13h9l1-13M10 11v5.5M14 11v5.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
   function renderTable() {
     const rows = houses.filter(visible).sort(cmp);
     const tb = $('rows');
     if (!rows.length) { tb.innerHTML = `<tr><td colspan="6" class="empty">${houses.length ? 'No houses match the selected filters.' : 'No houses yet. The first search runs tonight at 8pm.'}</td></tr>`; return; }
     tb.innerHTML = rows.map((h) => {
       const st = status(h);
-      const mark = favs.has(h.id) ? '<span class="star-sm" aria-label="Favourite">★</span>' : `<span class="dot ${st}" aria-label="${st === 'new' ? 'New' : st === 'gone' ? 'Off market' : 'Seen before'}"></span>`;
-      return `<tr data-id="${h.id}" class="${h.removed ? 'gone' : ''}" tabindex="0">
+      const mark = st === 'trash' ? `<span role="img" aria-label="Trashed">${binIcon}</span>`
+        : st === 'fav' ? '<span class="star-sm" aria-label="Favourite">★</span>'
+        : `<span class="dot ${st}" aria-label="${st === 'new' ? 'New' : st === 'gone' ? 'Off market' : 'Seen before'}"></span>`;
+      return `<tr data-id="${h.id}" class="${h.removed || st === 'trash' ? 'gone' : ''}" tabindex="0">
         <td class="mark"><span class="markcell">${mark}</span></td>
         <td class="addr">${esc(h.addr)}</td>
         <td>${esc(h.sub)}${trendBadge(h)}</td>
@@ -630,8 +650,8 @@ footer p { margin: 0; max-width: 70ch; }
       $('d-price-sub').textContent = 'No price or estimate available';
     }
     $('d-addr').textContent = h.addr;
-    const ok = '<span class="mark ok" role="img" aria-label="Confirmed"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>';
-    const unk = '<span class="mark unk" role="img" aria-label="Not stated in the listing">?</span>';
+    const ok = '<span class="ck ok" role="img" aria-label="Confirmed"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>';
+    const unk = '<span class="ck unk" role="img" aria-label="Not stated in the listing">?</span>';
     const check = (name, known, value) => `<tr><th scope="row">${name}</th><td class="val">${known ? value : 'Not stated'}</td><td class="mk">${known ? ok : unk}</td></tr>`;
     $('d-checks').innerHTML = [
       check('Freehold title', h.freehold === true, 'Freehold'),
@@ -639,7 +659,10 @@ footer p { margin: 0; max-width: 70ch; }
       check('160 m²+ floor area', h.floor > 0, `${(h.floor || 0).toLocaleString('en-NZ')} m²`),
     ].join('');
     const statusText = h.removed ? `${h.gone === 'filter' ? 'No longer in price range' : 'Off market'} since ${plainDate(h.removed)}` : h.first === data.updated ? 'New today' : `First seen ${plainDate(h.first)}`;
-    $('d-status').innerHTML = `<span class="dot ${h.removed ? 'gone' : kind(h)}"></span>${esc(statusText)}${favs.has(h.id) ? ' · Favourite' : ''}`;
+    const trashed = trash[h.id];
+    $('d-status').innerHTML = trashed
+      ? `${binIcon}Trashed on ${plainDate(trashed)} · disappears ${plainDate(addDays(trashed, TRASH_DAYS))}`
+      : `<span class="dot ${h.removed ? 'gone' : kind(h)}"></span>${esc(statusText)}${favs.has(h.id) ? ' · Favourite' : ''}`;
     const saleType = esc(method(h) || (h.priceNum ? 'Asking price' : '—')) + (h.when ? ` · ${esc(when(h.when))}` : '');
     $('d-facts').innerHTML = [
       fact('Neighbourhood', esc(h.sub)),
@@ -658,6 +681,8 @@ footer p { margin: 0; max-width: 70ch; }
     $('d-open').href = h.url;
     $('d-star').setAttribute('aria-pressed', String(favs.has(h.id)));
     $('d-star').setAttribute('aria-label', favs.has(h.id) ? 'Remove from favourites' : 'Add to favourites');
+    $('d-trash').setAttribute('aria-pressed', String(!!trash[h.id]));
+    $('d-trash').setAttribute('aria-label', trash[h.id] ? 'Take out of the trash' : 'Trash this house');
     $('d-src').textContent = `realestate.co.nz listing ${h.id}`;
   }
 
@@ -686,10 +711,18 @@ footer p { margin: 0; max-width: 70ch; }
 
   $('d-star').onclick = () => {
     const id = current; if (!id) return;
-    favs.has(id) ? favs.delete(id) : favs.add(id);
-    store.set(FAV_KEY, [...favs]);
+    if (favs.has(id)) favs.delete(id); else { favs.add(id); delete trash[id]; }
+    store.set(FAV_KEY, [...favs]); store.set(TRASH_KEY, trash);
     fillSheet(byId.get(id));
     renderAll();
+  };
+  $('d-trash').onclick = () => {
+    const id = current; if (!id) return;
+    if (trash[id]) delete trash[id]; else { trash[id] = nzToday(); favs.delete(id); }
+    store.set(TRASH_KEY, trash); store.set(FAV_KEY, [...favs]);
+    fillSheet(byId.get(id));
+    renderAll();
+    toast(trash[id] ? 'Trashed. Tap the bin again to undo.' : 'Taken out of the trash');
   };
 
   function toast(msg) { const t = $('toast'); t.textContent = msg; t.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => { t.hidden = true; }, 2200); }
@@ -747,6 +780,8 @@ footer p { margin: 0; max-width: 70ch; }
     drawRoutes(routes, paths, addrs);
     data = d; houses = d.houses || [];
     houses.forEach((h) => { h.addr = (h.addr || '').trim(); h.full = (h.full || '').trim(); });
+    byId = new Map(houses.map((h) => [h.id, h]));
+    houses = houses.filter((h) => !(trash[h.id] && daysSince(trash[h.id]) > TRASH_DAYS));
     byId = new Map(houses.map((h) => [h.id, h]));
     for (const id of [...favs]) if (!byId.has(id)) favs.delete(id);
     $('stamp').textContent = d.updated

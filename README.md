@@ -9,6 +9,6 @@ Houses for sale within 3 km driving distance of any Kristin School morning bus s
 - **Suburb trend:** median sale price, last 12 months vs the 12 before (4+ bedroom sales when 10+ each period, else all sales); within ±2% = flat (`data/suburbs.json`).
 - **House box checklist:** freehold title, 2+ bathrooms, 160 m²+ floor area — green tick when confirmed, red ? when not stated.
 - **Routes:** road paths from OSRM (`data/route_paths.json`); dashed = the non-stop run to school.
-- **Map colours:** light green = new in the latest update, blue = seen before, gold = favourite (saved per device), grey = off market.
+- **Map colours:** light green = new in the latest update, blue = seen before, gold = favourite, grey = off market or trashed. Favourites and trash are saved per device; trashed houses stay greyed out for 30 days, then disappear.
 
 Run locally: `python scraper/update.py --force`
