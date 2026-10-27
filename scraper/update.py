@@ -36,6 +36,7 @@ NZ = ZoneInfo("Pacific/Auckland")
 SCHEMA = 6  # bump when the matching rules change: non-matching houses are dropped, not greyed
 
 RADIUS_KM = 3.0
+RADIUS_LIMIT = RADIUS_KM + 0.05  # counts as 3 km when rounded to 0.1 km, as shown on the site
 PRICE_MIN, PRICE_MAX, BEDS_MIN = 900_000, 1_500_000, 4
 BATHS_MIN = 2           # houses with no bathroom count are kept
 FLOOR_MIN = 160         # m² of floor area (not land); houses with no floor area are kept
@@ -247,7 +248,7 @@ def road_distances(cands, ustops, cache):
     RADIUS_KM straight-line are candidates. Returns {lid: {"d", "s", "r"}}; a
     house missing from the result could not be checked this run.
     """
-    skey = "all-" + hashlib.md5(json.dumps([s[:2] for s in ustops]).encode()).hexdigest()[:8]
+    skey = "r305-" + hashlib.md5(json.dumps([s[:2] for s in ustops]).encode()).hexdigest()[:8]
     out, todo = {}, []
     for lid, rec in cands.items():
         k = f"{skey}:{rec['lat']:.5f},{rec['lng']:.5f}"
@@ -256,7 +257,7 @@ def road_distances(cands, ustops, cache):
             out[lid] = c
             continue
         near = sorted((hav(rec["lat"], rec["lng"], s[0], s[1]), i) for i, s in enumerate(ustops))
-        cand = [i for d, i in near if d <= RADIUS_KM]  # every stop that could be within reach by road
+        cand = [i for d, i in near if d < RADIUS_LIMIT]  # every stop that could be within reach by road
         if not cand:
             out[lid] = cache[lid] = {"k": k, "d": None, "s": None, "r": None}
             continue
@@ -605,7 +606,7 @@ def main():
     near = {}
     for lid, d in found.items():
         rec = base_record(d, stops)
-        if rec["lat"] and rec["dist"] <= RADIUS_KM and rec["beds"] >= BEDS_MIN:
+        if rec["lat"] and rec["dist"] < RADIUS_LIMIT and rec["beds"] >= BEDS_MIN:
             near[lid] = rec
     print(f"{len(near)} within {RADIUS_KM} km of a stop")
 
@@ -642,7 +643,7 @@ def main():
             else:
                 del in_range[lid]
             continue
-        if r["d"] is None or r["d"] > RADIUS_KM:
+        if r["d"] is None or r["d"] >= RADIUS_LIMIT:
             del in_range[lid]
             continue
         rec["dist"], rec["stop"], rec["route"], rec["distKind"] = r["d"], r["s"], r["r"], "road"
