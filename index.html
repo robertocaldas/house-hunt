@@ -249,6 +249,7 @@ td .trend { margin-left: 6px; }
 .toast { max-width: calc(100vw - 32px); text-align: center; overflow-wrap: anywhere; position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: var(--ink); color: var(--bg); padding: 8px 14px; border-radius: 10px; font-size: 14px; z-index: 4000; }
 footer { color: var(--muted); font-size: 12px; padding-block: 0 32px; }
 footer p { margin: 0; max-width: 70ch; }
+footer a { color: var(--accent); }
 </style>
 </head>
 <body>
@@ -296,7 +297,7 @@ footer p { margin: 0; max-width: 70ch; }
 </section>
 
 <footer class="wrap">
-  <p>Listings from realestate.co.nz, searched daily at 8pm NZ time. The $900k–$1.5M range is checked against the advertised price; without one, against the realestate.co.nz estimate (grey, “est”); without that, against the council valuation (grey, “CV”). Listings with none of these are left out. Houses must have 2+ bathrooms and 160 m²+ of floor area (the house, not the section); houses whose listing doesn't state these are kept and marked with a red ? in their details. Distance is the driving distance by road to the nearest morning (to-school) stop, and Kristin School counts as a stop. Dashed route lines are the non-stop run to school. Suburb arrows compare the median sale price of the last 12 months with the 12 months before (4+ bedroom sales when there are enough, otherwise all sales); within ±2% counts as flat. Favourites and trashed houses are saved on this device. Trashed houses stay greyed out for 30 days, like sold ones, then disappear; the Trashed chip hides them straight away.</p>
+  <p>Listings from realestate.co.nz, searched daily at 8pm NZ time. The $900k–$1.5M range is checked against the advertised price; without one, against the realestate.co.nz estimate (grey, “est”); without that, against the council valuation (grey, “CV”). Listings with none of these are left out. Houses must have 2+ bathrooms and 160 m²+ of floor area (the house, not the section); houses whose listing doesn't state these are kept and marked with a red ? in their details. Distance is the driving distance by road to the nearest morning (to-school) stop, and Kristin School counts as a stop. Dashed route lines are the non-stop run to school. Suburb arrows compare the median sale price of the last 12 months with the 12 months before (4+ bedroom sales when there are enough, otherwise all sales); within ±2% counts as flat. Commute times to AIA (74 Taharoto Road) are for a weekday leaving home at 8am: driving from <a href="https://project-osrm.org" target="_blank" rel="noopener">OSRM</a> (OpenStreetMap roads), public transport from <a href="https://transitous.org/sources/" target="_blank" rel="noopener">Transitous</a> using Auckland Transport timetables. Sold prices come from realestate.co.nz once the sale is public, usually a few weeks after it sells. Favourites and trashed houses are saved on this device. Trashed houses stay greyed out for 30 days, like sold ones, then disappear; the Trashed chip hides them straight away.</p>
 </footer>
 
 <div class="scrim" id="scrim" hidden></div>
@@ -514,6 +515,8 @@ footer p { margin: 0; max-width: 70ch; }
   }
 
   function pinLabel(h) {
+    if (h.removed && h.soldPrice) return { t: 'Sold ' + short(h.soldPrice), est: false };
+    if (h.removed && h.listing === 'sold') return { t: 'Sold', est: false };
     if (h.priceNum) return { t: short(h.priceNum), est: false };
     if (h.est) return { t: '~' + short(h.est[1]), est: true };
     if (h.cv) return { t: 'CV ' + short(h.cv[0]), est: true };
@@ -569,6 +572,8 @@ footer p { margin: 0; max-width: 70ch; }
     return (priceVal(a) ?? 9e9) - (priceVal(b) ?? 9e9) || a.addr.localeCompare(b.addr);
   }
   function priceCell(h) {
+    if (h.removed && h.soldPrice) return `<span class="muted">Sold ${money(h.soldPrice)}</span>`;
+    if (h.removed && h.listing === 'sold') return `<span class="muted">Sold</span>`;
     if (h.priceNum) return money(h.priceNum);
     if (h.est) return `<span class="est" title="realestate.co.nz estimate">≈ ${money(h.est[1])} <span class="tag">est</span></span>`;
     if (h.cv) return `<span class="est" title="Council valuation ${cvYear(h)}">${money(h.cv[0])} <span class="tag">CV</span></span>`;
@@ -631,6 +636,17 @@ footer p { margin: 0; max-width: 70ch; }
     g.querySelector('.next').onclick = () => strip.scrollBy({ left: strip.clientWidth, behavior: 'smooth' });
   }
 
+  function commuteHtml(h) {
+    const lines = [];
+    if (h.trafficMin) lines.push(`<b>${h.trafficMin} min</b> drive in 8am traffic · ${h.trafficKm} km`);
+    else if (h.driveMin) lines.push(`<b>${h.driveMin} min</b> drive without traffic · ${h.driveKm} km <span class="muted" style="font-weight:400">(8am traffic time not set up yet)</span>`);
+    if (h.pt) {
+      const ch = h.pt.transfers === 0 ? 'no changes' : h.pt.transfers === 1 ? '1 change' : `${h.pt.transfers} changes`;
+      lines.push(`<b>${h.pt.min} min</b> by public transport · arrive ${esc(h.pt.arr)} · ${esc(h.pt.routes.join(' → '))} · ${ch}, ${h.pt.walk} min walking`);
+    } else if (h.pt === null) lines.push('<span class="muted">No public transport route found</span>');
+    else if (h.driveMin || h.trafficMin) lines.push('<span class="muted">Public transport time coming in the next update</span>');
+    return lines.join('<br>');
+  }
   function fact(label, value, wide) { return value ? `<div class="fact${wide ? ' wide' : ''}"><dt>${label}</dt><dd>${value}</dd></div>` : ''; }
 
   function fillSheet(h) {
@@ -658,7 +674,12 @@ footer p { margin: 0; max-width: 70ch; }
       check('2+ bathrooms', h.baths > 0, `${h.baths}`),
       check('160 m²+ floor area', h.floor > 0, `${(h.floor || 0).toLocaleString('en-NZ')} m²`),
     ].join('');
-    const statusText = h.removed ? `${h.gone === 'filter' ? 'No longer in price range' : 'Off market'} since ${plainDate(h.removed)}` : h.first === data.updated ? 'New today' : `First seen ${plainDate(h.first)}`;
+    const leftText = () => h.soldPrice ? `Sold for ${money(h.soldPrice)} on ${plainDate(h.soldDate)}`
+      : h.listing === 'sold' ? `Sold · price not public yet (checked nightly)`
+      : h.listing === 'withdrawn' || h.listing === 'hidden' ? `Withdrawn from sale on ${plainDate(h.removed)}`
+      : h.gone === 'filter' ? `No longer matches the filters since ${plainDate(h.removed)}`
+      : `Off market since ${plainDate(h.removed)}`;
+    const statusText = h.removed ? leftText() : h.first === data.updated ? 'New today' : `First seen ${plainDate(h.first)}`;
     const trashed = trash[h.id];
     $('d-status').innerHTML = trashed
       ? `${binIcon}Trashed on ${plainDate(trashed)} · disappears ${plainDate(addDays(trashed, TRASH_DAYS))}`
@@ -677,6 +698,7 @@ footer p { margin: 0; max-width: 70ch; }
       fact('Sale type', saleType, true),
       fact('Address', esc(h.full), true),
       fact('Nearest bus stop', h.stop ? `${h.dist.toFixed(1)} km ${h.distKind === 'road' ? 'drive' : 'straight line'} · ${esc(h.stop)} (${esc(h.route)})` : '', true),
+      fact('To AIA, Smales Farm · weekday 8am', commuteHtml(h), true),
     ].join('');
     $('d-open').href = h.url;
     $('d-star').setAttribute('aria-pressed', String(favs.has(h.id)));

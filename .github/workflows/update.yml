@@ -43,6 +43,8 @@ jobs:
             data/titles.json
             data/roaddist.json
             data/lastrun.json
+            data/commute.json
+            data/sold.json
           key: lookups-${{ github.run_id }}
           restore-keys: lookups-
 
@@ -50,6 +52,7 @@ jobs:
         id: search
         env:
           EVENT: ${{ github.event_name }}
+          TOMTOM_API_KEY: ${{ secrets.TOMTOM_API_KEY }}  # optional: 8am traffic times to AIA
         run: python scraper/update.py
 
       - name: Commit results

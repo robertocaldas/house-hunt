@@ -43,6 +43,7 @@ FLOOR_MIN = 160         # m² of floor area (not land); houses with no floor are
 MIN_EST_CONFIDENCE = 3          # realestate.co.nz rates estimates 1 (low) to 5 (high)
 VALUATION_MAX_AGE_DAYS = 30
 REMOVED_KEEP_DAYS = 30
+SOLD_KEEP_DAYS = 60     # sold houses stay longer so the sale price has time to become public
 MAX_PHOTOS = 40
 WORKERS = 6
 # realestate.co.nz title types: 1 Freehold, 2 Leasehold, 3 Cross Lease, 4 Unit Title, 5 Company
@@ -302,6 +303,187 @@ def road_distances(cands, ustops, cache):
     for start in range(0, len(todo), 10):
         run(todo[start:start + 10])
     return out
+
+
+# ---------------------------------------------------------------- commute to AIA, Smales Farm
+
+AIA = (-36.785488, 174.7554118)   # AIA House, 74 Taharoto Road, Smales Farm, Takapuna
+COMMUTE_HOUR = 8
+TOMTOM = "https://api.tomtom.com/routing/1/calculateRoute/"
+TRANSITOUS = "https://api.transitous.org/api/v1/plan"
+APP_UA = "kristin-bus-homes/1.0 (+https://github.com/robertocaldas/house-hunt)"
+PT_DAILY_CAP = 250         # Transitous asks heavy users to get in touch above ~720 requests a day
+TRAFFIC_DAILY_CAP = 600    # TomTom free tier: 20,000 routing requests a month
+
+
+def commute_departure(now):
+    """Next Tuesday at 8:00am NZ: a typical weekday, always in the future."""
+    d = now.date() + dt.timedelta(days=1)
+    while d.weekday() != 1:
+        d += dt.timedelta(days=1)
+    return dt.datetime(d.year, d.month, d.day, COMMUTE_HOUR, 0, tzinfo=NZ)
+
+
+def ua_json(url, tries=3):
+    last = None
+    for i in range(tries):
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": APP_UA, "Accept": "application/json"})
+            with urllib.request.urlopen(req, timeout=60) as r:
+                return json.loads(r.read().decode("utf-8"))
+        except Exception as e:  # noqa: BLE001
+            last = e
+            time.sleep(3 * (i + 1))
+    raise RuntimeError(f"GET failed {url.split('?')[0]}: {last}")
+
+
+def osrm_to_aia(points):
+    """Free-flow driving distance (km) and time (min) from each point to AIA."""
+    coords = list(points) + [AIA]
+    url = (OSRM_TABLE + ";".join(f"{lng:.6f},{lat:.6f}" for lat, lng in coords)
+           + "?annotations=distance,duration&destinations=" + str(len(coords) - 1)
+           + "&sources=" + ";".join(map(str, range(len(points)))))
+    j = fetch_json(url, tries=3)
+    if j.get("code") != "Ok":
+        raise RuntimeError(j.get("code"))
+    out = []
+    for d, t in zip(j["distances"], j["durations"]):
+        out.append((round(d[0] / 1000, 1), round(t[0] / 60)) if d[0] is not None else None)
+    return out
+
+
+def tomtom_to_aia(lat, lng, depart, key):
+    """Driving time leaving at `depart`, using TomTom's typical traffic for that time."""
+    q = urllib.parse.urlencode({"key": key, "departAt": depart.isoformat(), "traffic": "true",
+                                "travelMode": "car", "routeType": "fastest", "computeTravelTimeFor": "all"})
+    j = ua_json(f"{TOMTOM}{lat:.6f},{lng:.6f}:{AIA[0]:.6f},{AIA[1]:.6f}/json?{q}")
+    sm = j["routes"][0]["summary"]
+    secs = sm.get("historicTrafficTravelTimeInSeconds") or sm["travelTimeInSeconds"]
+    return round(sm["lengthInMeters"] / 1000, 1), round(secs / 60)
+
+
+def transit_to_aia(lat, lng, depart):
+    """Public transport leaving home at `depart`: the earliest arrival, preferring fewer changes."""
+    q = urllib.parse.urlencode({"fromPlace": f"{lat:.6f},{lng:.6f}", "toPlace": f"{AIA[0]:.6f},{AIA[1]:.6f}",
+                                "time": depart.isoformat(), "arriveBy": "false"})
+    j = ua_json(f"{TRANSITOUS}?{q}")
+    its = []
+    for it in j.get("itineraries") or []:
+        end = dt.datetime.fromisoformat(it["endTime"].replace("Z", "+00:00"))
+        legs = it.get("legs") or []
+        its.append({
+            "end": end,
+            "transfers": it.get("transfers", 0),
+            "routes": [l.get("routeShortName") or l.get("displayName") or l["mode"].title()
+                       for l in legs if l.get("mode") != "WALK"],
+            "walk": round(sum(l.get("duration", 0) for l in legs if l.get("mode") == "WALK") / 60),
+        })
+    if not its:
+        return {"none": True}
+    first = min(i["end"] for i in its)
+    best = min((i for i in its if (i["end"] - first).total_seconds() <= 180), key=lambda i: (i["transfers"], i["end"]))
+    return {"min": round((best["end"] - depart).total_seconds() / 60),
+            "arr": best["end"].astimezone(NZ).strftime("%H:%M"),
+            "transfers": best["transfers"], "routes": best["routes"], "walk": best["walk"]}
+
+
+def update_commutes(recs, cache, now):
+    """Fill cache[lid] with drive and public transport times to AIA for each house in recs."""
+    depart = commute_departure(now)
+    meta = cache.setdefault("_meta", {})
+    today = now.date().isoformat()
+    if meta.get("day") != today:
+        meta.update(day=today, pt=0, tt=0)
+    for lid, rec in recs.items():
+        k = f"{rec['lat']:.5f},{rec['lng']:.5f}"
+        if (cache.get(lid) or {}).get("k") != k:
+            cache[lid] = {"k": k}
+
+    need = [lid for lid in recs if "drive" not in cache[lid]]
+    for i in range(0, len(need), 80):
+        chunk = need[i:i + 80]
+        try:
+            for lid, res in zip(chunk, osrm_to_aia([(recs[l]["lat"], recs[l]["lng"]) for l in chunk])):
+                if res:
+                    cache[lid]["drive"] = list(res)
+        except Exception as e:  # noqa: BLE001
+            print("AIA drive (OSRM) failed:", e, file=sys.stderr)
+        time.sleep(1.1)
+
+    key = os.environ.get("TOMTOM_API_KEY", "").strip()
+    if key:
+        need = [lid for lid in recs if "traffic" not in cache[lid]]
+        for lid in need:
+            if meta["tt"] >= TRAFFIC_DAILY_CAP:
+                break
+            try:
+                km, mins = tomtom_to_aia(recs[lid]["lat"], recs[lid]["lng"], depart, key)
+                cache[lid]["traffic"] = [km, mins, depart.date().isoformat()]
+            except Exception as e:  # noqa: BLE001
+                print("AIA traffic (TomTom) failed", lid, e, file=sys.stderr)
+            meta["tt"] += 1
+            time.sleep(0.25)
+
+    need = [lid for lid in recs if "pt" not in cache[lid]]
+    print(f"AIA commute: {len(need)} houses need public transport times")
+    for lid in need:
+        if meta["pt"] >= PT_DAILY_CAP:
+            print("public transport: daily cap reached; continues next run")
+            break
+        try:
+            cache[lid]["pt"] = transit_to_aia(recs[lid]["lat"], recs[lid]["lng"], depart)
+            cache[lid]["pt"]["date"] = depart.date().isoformat()
+        except Exception as e:  # noqa: BLE001
+            print("AIA public transport (Transitous) failed", lid, e, file=sys.stderr)
+        meta["pt"] += 1
+        time.sleep(1.0)
+
+
+def commute_fields(c):
+    """Compact per-house commute data for houses.json."""
+    out = {}
+    if c.get("drive"):
+        out["driveKm"], out["driveMin"] = c["drive"]
+    if c.get("traffic"):
+        out["trafficKm"], out["trafficMin"] = c["traffic"][0], c["traffic"][1]
+    pt = c.get("pt")
+    if pt:
+        out["pt"] = None if pt.get("none") else {k: pt[k] for k in ("min", "arr", "transfers", "routes", "walk")}
+    return out
+
+
+# ---------------------------------------------------------------- sold prices
+
+def check_sold(ids, cache, today, cap=120):
+    """Listing status of houses that left the list, and the sale price once it is public."""
+    done = 0
+    for lid in ids:
+        c = cache.get(lid) or {}
+        if c.get("price") or c.get("checked") == today:
+            continue
+        if done >= cap:
+            break
+        done += 1
+        try:
+            a = get(f"/listings/{lid}")["data"]["attributes"]
+        except Exception as e:  # noqa: BLE001
+            print("sold check failed", lid, e, file=sys.stderr)
+            continue
+        c.update(status=a.get("listing-status"), checked=today)
+        if c["status"] == "sold" and a.get("property-short-id"):
+            listed = (a.get("published-date") or "")[:10]
+            try:
+                pa = (get(f"/properties/{a['property-short-id']}").get("data") or {}).get("attributes") or {}
+                since = (dt.date.fromisoformat(listed) - dt.timedelta(days=7)).isoformat() if listed else ""
+                sales = [x for x in (pa.get("sales-history") or []) if (x.get("sale-date") or "") >= since and x.get("sale-price")]
+                if sales:
+                    s = max(sales, key=lambda x: x["sale-date"])
+                    c.update(price=s["sale-price"], date=s["sale-date"])
+            except Exception as e:  # noqa: BLE001
+                print("sale price lookup failed", lid, e, file=sys.stderr)
+        cache[lid] = c
+        time.sleep(0.3)
+    print(f"sold check: {done} listings checked")
 
 
 # ---------------------------------------------------------------- listings
@@ -704,6 +886,20 @@ def main():
     added = [lid for lid in current if lid not in known]
     print(f"{len(current)} matching houses, {len(added)} new")
 
+    # Commute to AIA (cached; filled in gradually) and sale prices of houses that left the list.
+    commute = load("commute.json", {})
+    try:
+        update_commutes(current, commute, now)
+    except Exception as e:  # noqa: BLE001
+        print("AIA commute skipped:", e, file=sys.stderr)
+    for lid, rec in current.items():
+        rec.update(commute_fields(commute.get(lid) or {}))
+    save("commute.json", {k: v for k, v in commute.items() if k == "_meta" or k in near})
+    sold = load("sold.json", {})
+    left = [lid for lid in known if lid not in current]
+    check_sold(left, sold, today)
+    save("sold.json", {k: v for k, v in sold.items() if k in known})
+
     save("valuations.json", {k: v for k, v in vals.items() if k in near})
     save("titles.json", {k: v for k, v in titles.items() if k in near})
     save("lastrun.json", {"searchedAt": now.isoformat(timespec="seconds"), "event": event,
@@ -732,8 +928,13 @@ def main():
         if not h.get("removed"):
             h["removed"] = today
             h["gone"] = "filter" if lid in found else "offmarket"
+        sc = sold.get(lid) or {}
+        if sc.get("status"):
+            h["listing"] = sc["status"]  # sold, withdrawn, hidden, active...
+        if sc.get("price"):
+            h["soldPrice"], h["soldDate"] = sc["price"], sc["date"]
         age = (dt.date.fromisoformat(today) - dt.date.fromisoformat(h["removed"])).days
-        if age > REMOVED_KEEP_DAYS:
+        if age > (SOLD_KEEP_DAYS if h.get("listing") == "sold" else REMOVED_KEEP_DAYS):
             photos.pop(lid, None)
             continue
         houses.append(h)

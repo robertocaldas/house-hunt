@@ -5,3 +5,5 @@ data/valuations.json
 data/titles.json
 data/roaddist.json
 data/lastrun.json
+data/commute.json
+data/sold.json
