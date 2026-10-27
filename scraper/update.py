@@ -33,10 +33,12 @@ OSRM = "https://router.project-osrm.org/route/v1/driving/"
 OSRM_TABLE = "https://router.project-osrm.org/table/v1/driving/"
 TABLE_MAX = 90         # coordinates per OSRM table request
 NZ = ZoneInfo("Pacific/Auckland")
-SCHEMA = 5  # bump when the matching rules change: non-matching houses are dropped, not greyed
+SCHEMA = 6  # bump when the matching rules change: non-matching houses are dropped, not greyed
 
 RADIUS_KM = 3.0
 PRICE_MIN, PRICE_MAX, BEDS_MIN = 900_000, 1_500_000, 4
+BATHS_MIN = 2           # houses with no bathroom count are kept
+FLOOR_MIN = 160         # m² of floor area (not land); houses with no floor area are kept
 MIN_EST_CONFIDENCE = 3          # realestate.co.nz rates estimates 1 (low) to 5 (high)
 VALUATION_MAX_AGE_DAYS = 30
 REMOVED_KEEP_DAYS = 30
@@ -439,7 +441,7 @@ def base_record(d, stops):
 
 def fetch_valuation(sid, today):
     """realestate.co.nz estimate and latest council valuation for a property."""
-    v = {"e": None, "cv": None, "age": 0, "t": today}
+    v = {"e": None, "cv": None, "age": 0, "fa": 0, "ba": 0, "la": 0, "t": today}
     if not sid:
         return v
     try:
@@ -449,6 +451,9 @@ def fetch_valuation(sid, today):
         v["t"] = None  # retry next run
         return v
     v["age"] = attrs.get("building-age") or 0  # decade of construction, e.g. 1980; 0 = unknown
+    v["fa"] = attrs.get("floor-area") or 0
+    v["la"] = attrs.get("land-area") or 0
+    v["ba"] = attrs.get("bathrooms-total-count") or 0
     ev = attrs.get("estimated-value") or {}
     if ev.get("value-mid"):
         v["e"] = [ev.get("value-low"), ev.get("value-mid"), ev.get("value-high"), ev.get("confidence-rating")]
@@ -483,7 +488,8 @@ def fetch_detail(lid):
     try:
         x = get(f"/listings/{lid}")["data"]["attributes"]
         ph = [p["md5"] for p in sorted(x.get("photos") or [], key=lambda p: p.get("order", 0))]
-        return {"tt": x.get("title-type"), "floor": x.get("floor-area") or 0, "photos": ph}
+        return {"tt": x.get("title-type"), "floor": x.get("floor-area") or 0, "land": x.get("land-area") or 0,
+                "baths": x.get("bathroom-count") or x.get("bathrooms-total-count") or 0, "photos": ph}
     except Exception as e:  # noqa: BLE001
         print("detail failed", lid, e, file=sys.stderr)
         return None
@@ -649,34 +655,49 @@ def main():
                 details[lid] = det
                 titles[lid] = det["tt"]
 
+    def size_facts(lid, rec):
+        """Floor area, bathrooms and land area: listing first, then earlier data, then the property record."""
+        det, k, v = details.get(lid) or {}, known.get(lid) or {}, vals.get(lid) or {}
+        baths = rec["baths"] or det.get("baths") or k.get("baths") or v.get("ba") or 0
+        land = rec["land"] or det.get("land") or k.get("land") or v.get("la") or 0
+        # Skip implausible floor areas: usually the land area typed into the floor-area field.
+        floors = (det.get("floor"), rec["floor"], k.get("floor"), v.get("fa"))
+        floor = next((f for f in floors if f and f >= 40 and f != land), 0)
+        return floor, baths, land
+
+    cands = [lid for lid, rec in in_range.items()
+             if titles.get(lid) not in NON_FREEHOLD and rec["type"] not in EXCLUDED_TYPES]
+
+    # Property record: decade built, plus floor area / bathrooms when the listing lacks them.
+    need = []
+    for lid in cands:
+        v = vals.get(lid) or {}
+        floor, baths, _ = size_facts(lid, in_range[lid])
+        if "age" not in v or ("fa" not in v and not (floor and baths)):
+            need.append(lid)
+    print(f"fetching {len(need)} property records")
+    with ThreadPoolExecutor(WORKERS) as ex:
+        for lid, v in zip(need, ex.map(lambda l: fetch_valuation(in_range[l]["_sid"], today), need)):
+            if v.get("t"):
+                vals[lid] = v
+
     current = {}
-    for lid, rec in in_range.items():
-        tt = titles.get(lid)
-        if tt in NON_FREEHOLD or rec["type"] in EXCLUDED_TYPES:
+    for lid in cands:
+        rec = in_range[lid]
+        floor, baths, land = size_facts(lid, rec)
+        if (baths and baths < BATHS_MIN) or (floor and floor < FLOOR_MIN):
             continue
-        if lid in known:
-            rec["freehold"] = known[lid].get("freehold")
-        else:
-            rec["freehold"] = True if tt == 1 else None
+        rec["floor"], rec["baths"], rec["land"] = floor, baths, land
+        rec["built"] = (vals.get(lid) or {}).get("age") or None
+        tt = titles.get(lid)
+        rec["freehold"] = True if tt == 1 else (known.get(lid) or {}).get("freehold")
         det = details.get(lid)
-        if det:
-            rec["floor"] = det["floor"] or rec["floor"]
-            if det["photos"]:
-                rec["_photos"] = det["photos"]
+        if det and det["photos"]:
+            rec["_photos"] = det["photos"]
         current[lid] = rec
 
     added = [lid for lid in current if lid not in known]
     print(f"{len(current)} matching houses, {len(added)} new")
-
-    # Decade of construction comes with the property record (also fetched for priced listings).
-    need = [lid for lid in current if "age" not in (vals.get(lid) or {})]
-    print(f"fetching {len(need)} property records for build decade")
-    with ThreadPoolExecutor(WORKERS) as ex:
-        for lid, v in zip(need, ex.map(lambda l: fetch_valuation(current[l]["_sid"], today), need)):
-            if v.get("t"):
-                vals[lid] = v
-    for lid, rec in current.items():
-        rec["built"] = (vals.get(lid) or {}).get("age") or None
 
     save("valuations.json", {k: v for k, v in vals.items() if k in near})
     save("titles.json", {k: v for k, v in titles.items() if k in near})
@@ -692,8 +713,6 @@ def main():
             cur["first"] = h.get("first", today)
             cur["last"] = today
             cur["removed"], cur["gone"] = None, None
-            if not cur["floor"]:
-                cur["floor"] = h.get("floor", 0)
             if cur["_photos"]:
                 photos[lid] = cur["_photos"][:MAX_PHOTOS]
             houses.append(cur)
@@ -730,7 +749,8 @@ def main():
         "updatedAt": now.isoformat(timespec="minutes"),
         "newCount": new_today,
         "active": active,
-        "filters": {"priceMin": PRICE_MIN, "priceMax": PRICE_MAX, "bedsMin": BEDS_MIN, "radiusKm": RADIUS_KM,
+        "filters": {"priceMin": PRICE_MIN, "priceMax": PRICE_MAX, "bedsMin": BEDS_MIN, "bathsMin": BATHS_MIN,
+                    "floorMin": FLOOR_MIN, "radiusKm": RADIUS_KM,
                     "distance": "driving"},
         "stats": {"roadUnchecked": road_failed},
         "houses": houses,

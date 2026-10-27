@@ -164,19 +164,21 @@ td .trend { margin-left: 6px; }
 .sheet {
   position: fixed; z-index: 2001; background: var(--surface); box-shadow: var(--shadow);
   display: flex; flex-direction: column; overflow: hidden;
-  left: 0; right: 0; bottom: 0; max-height: 92vh; border-radius: 18px 18px 0 0;
+  left: 0; right: 0; bottom: 0; border-radius: 18px 18px 0 0;
+  max-height: calc(100vh - env(safe-area-inset-top, 0px) - 24px);
+  max-height: calc(100dvh - env(safe-area-inset-top, 0px) - 24px);
   transform: translateY(102%); transition: transform .25s cubic-bezier(.2,.8,.2,1);
 }
 .sheet.open { transform: none; }
 @media (min-width: 860px) {
-  .sheet { left: auto; top: 12px; bottom: 12px; right: 12px; width: 460px; max-height: none; border-radius: 18px; transform: translateX(110%); }
+  .sheet { left: auto; top: calc(12px + env(safe-area-inset-top, 0px)); bottom: calc(12px + env(safe-area-inset-bottom, 0px)); right: calc(12px + env(safe-area-inset-right, 0px)); width: 460px; max-height: none; border-radius: 18px; transform: translateX(110%); }
 }
 @media (prefers-reduced-motion: reduce) { .sheet, .scrim { transition: none; } }
 .sheet-scroll { overflow-y: auto; overscroll-behavior: contain; padding-bottom: env(safe-area-inset-bottom, 0px); }
 .grab { width: 40px; height: 5px; border-radius: 3px; background: var(--line); margin: 8px auto 0; }
 @media (min-width: 860px) { .grab { display: none; } }
 .close {
-  position: absolute; top: 12px; right: 12px; z-index: 3; width: 34px; height: 34px; border-radius: 50%;
+  position: absolute; top: 10px; right: 10px; z-index: 3; width: 40px; height: 40px; border-radius: 50%;
   border: 0; background: color-mix(in srgb, var(--surface) 88%, transparent); box-shadow: 0 1px 4px rgba(0,0,0,.25);
   cursor: pointer; font-size: 20px; line-height: 1; display: grid; place-items: center;
 }
@@ -203,8 +205,16 @@ td .trend { margin-left: 6px; }
 .star[aria-pressed="true"] svg { fill: var(--fav); stroke: var(--fav); }
 .addr-row { display: flex; align-items: center; gap: 8px; }
 .addr-row h3 { font: 700 18px/1.25 var(--display); margin: 0; text-wrap: balance; }
-.fh { flex: none; width: 22px; height: 22px; border-radius: 50%; background: var(--accent); display: grid; place-items: center; }
-.fh svg { width: 13px; height: 13px; stroke: var(--accent-ink); stroke-width: 3; fill: none; }
+.checks { width: 100%; border-collapse: collapse; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; font-variant-numeric: tabular-nums; }
+.checks th, .checks td { padding: 8px 12px; border-bottom: 1px solid var(--line); text-align: left; font-weight: 400; }
+.checks tr:last-child th, .checks tr:last-child td { border-bottom: 0; }
+.checks th { font-weight: 700; }
+.checks td.val { color: var(--muted); font-size: 13px; text-align: right; }
+.checks td.mk { width: 40px; text-align: center; }
+.mark { display: inline-grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; border: 1.5px solid currentColor; font: 700 14px/1 var(--body); vertical-align: middle; }
+.mark.ok { color: var(--up); background: color-mix(in srgb, var(--up) 14%, transparent); }
+.mark.unk { color: var(--down); background: color-mix(in srgb, var(--down) 12%, transparent); }
+.mark svg { width: 14px; height: 14px; stroke: currentColor; stroke-width: 3; fill: none; }
 .status { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); }
 .facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
 .fact { background: var(--surface); padding: 10px 12px; min-width: 0; }
@@ -259,7 +269,7 @@ footer p { margin: 0; max-width: 70ch; }
 <section class="list wrap" aria-labelledby="list-title">
   <div class="list-head">
     <h2 id="list-title">Houses</h2>
-    <p id="list-sub">4+ bedrooms · no townhouses · $900k–$1.5M · within 3 km drive of a Kristin bus stop</p>
+    <p id="list-sub">4+ bed · 2+ bath · 160 m²+ floor · no townhouses · $900k–$1.5M · within 3 km drive of a Kristin bus stop</p>
   </div>
   <div class="table-scroll">
     <table id="tbl">
@@ -269,7 +279,7 @@ footer p { margin: 0; max-width: 70ch; }
           <th data-col="addr"><button>Address <span class="arrow">▲</span></button></th>
           <th data-col="sub"><button>Neighbourhood <span class="arrow">▲</span></button></th>
           <th data-col="beds" class="num"><button>Beds <span class="arrow">▲</span></button></th>
-          <th data-col="floor" class="num"><button>m² <span class="arrow">▲</span></button></th>
+          <th data-col="floor" class="num"><button>Floor m² <span class="arrow">▲</span></button></th>
           <th data-col="price" class="num"><button>Price <span class="arrow">▲</span></button></th>
         </tr>
       </thead>
@@ -279,7 +289,7 @@ footer p { margin: 0; max-width: 70ch; }
 </section>
 
 <footer class="wrap">
-  <p>Listings from realestate.co.nz, searched daily at 8pm NZ time. The $900k–$1.5M range is checked against the advertised price; without one, against the realestate.co.nz estimate (grey, “est”); without that, against the council valuation (grey, “CV”). Listings with none of these are left out. Distance is the driving distance by road to the nearest morning (to-school) stop, and Kristin School counts as a stop. Dashed route lines are the non-stop run to school. Suburb arrows compare the median sale price of the last 12 months with the 12 months before (4+ bedroom sales when there are enough, otherwise all sales); within ±2% counts as flat. Favourites are saved on this device.</p>
+  <p>Listings from realestate.co.nz, searched daily at 8pm NZ time. The $900k–$1.5M range is checked against the advertised price; without one, against the realestate.co.nz estimate (grey, “est”); without that, against the council valuation (grey, “CV”). Listings with none of these are left out. Houses must have 2+ bathrooms and 160 m²+ of floor area (the house, not the section); houses whose listing doesn't state these are kept and marked with a red ? in their details. Distance is the driving distance by road to the nearest morning (to-school) stop, and Kristin School counts as a stop. Dashed route lines are the non-stop run to school. Suburb arrows compare the median sale price of the last 12 months with the 12 months before (4+ bedroom sales when there are enough, otherwise all sales); within ±2% counts as flat. Favourites are saved on this device.</p>
 </footer>
 
 <div class="scrim" id="scrim" hidden></div>
@@ -299,9 +309,10 @@ footer p { margin: 0; max-width: 70ch; }
         </button>
       </div>
       <div>
-        <div class="addr-row"><h3 id="d-addr"></h3><span class="fh" id="d-fh" aria-label="Freehold" role="img" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span></div>
+        <div class="addr-row"><h3 id="d-addr"></h3></div>
         <div class="status" id="d-status"></div>
       </div>
+      <table class="checks" id="d-checks" aria-label="Requirements"></table>
       <dl class="facts" id="d-facts"></dl>
       <div class="actions">
         <a class="btn primary" id="d-open" target="_blank" rel="noopener">
@@ -619,22 +630,30 @@ footer p { margin: 0; max-width: 70ch; }
       $('d-price-sub').textContent = 'No price or estimate available';
     }
     $('d-addr').textContent = h.addr;
-    $('d-fh').hidden = h.freehold !== true;
+    const ok = '<span class="mark ok" role="img" aria-label="Confirmed"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>';
+    const unk = '<span class="mark unk" role="img" aria-label="Not stated in the listing">?</span>';
+    const check = (name, known, value) => `<tr><th scope="row">${name}</th><td class="val">${known ? value : 'Not stated'}</td><td class="mk">${known ? ok : unk}</td></tr>`;
+    $('d-checks').innerHTML = [
+      check('Freehold title', h.freehold === true, 'Freehold'),
+      check('2+ bathrooms', h.baths > 0, `${h.baths}`),
+      check('160 m²+ floor area', h.floor > 0, `${(h.floor || 0).toLocaleString('en-NZ')} m²`),
+    ].join('');
     const statusText = h.removed ? `${h.gone === 'filter' ? 'No longer in price range' : 'Off market'} since ${plainDate(h.removed)}` : h.first === data.updated ? 'New today' : `First seen ${plainDate(h.first)}`;
     $('d-status').innerHTML = `<span class="dot ${h.removed ? 'gone' : kind(h)}"></span>${esc(statusText)}${favs.has(h.id) ? ' · Favourite' : ''}`;
     const saleType = esc(method(h) || (h.priceNum ? 'Asking price' : '—')) + (h.when ? ` · ${esc(when(h.when))}` : '');
     $('d-facts').innerHTML = [
       fact('Neighbourhood', esc(h.sub)),
-      fact('Bedrooms', h.beds ? String(h.beds) : ''),
-      fact('Floor area', h.floor ? `${h.floor.toLocaleString('en-NZ')} m²` : '—'),
-      fact('Land', h.land ? `${h.land.toLocaleString('en-NZ')} m²` : '—'),
+      fact('Bedrooms', h.beds ? String(h.beds) : '—'),
+      fact('Bathrooms', h.baths ? String(h.baths) : '—'),
+      fact('Floor area (house)', h.floor ? `${h.floor.toLocaleString('en-NZ')} m²` : '—'),
+      fact('Land area (section)', h.land ? `${h.land.toLocaleString('en-NZ')} m²` : '—'),
       fact('Built', h.newBuild ? 'New build' : h.built ? `${h.built}s` : '—'),
+      fact('Type', esc(h.type) || '—'),
       fact('Listed', plainDate(h.listed)),
       fact('Suburb prices', (() => { const t = trendOf(h); if (!t) return ''; if (!t.dir) return '<span class="muted">Not enough sales to tell</span>'; return `${trendBadge(h)} <span class="muted" style="font-weight:400">median sale price over 12 months · ${money(t.prev)} → ${money(t.cur)} · ${esc(t.basis)}, ${t.n} sold</span>`; })(), true),
       fact('Sale type', saleType, true),
       fact('Address', esc(h.full), true),
       fact('Nearest bus stop', h.stop ? `${h.dist.toFixed(1)} km ${h.distKind === 'road' ? 'drive' : 'straight line'} · ${esc(h.stop)} (${esc(h.route)})` : '', true),
-      fact('Property', esc([h.type, h.baths ? `${h.baths} bath` : ''].filter(Boolean).join(' · ')), true),
     ].join('');
     $('d-open').href = h.url;
     $('d-star').setAttribute('aria-pressed', String(favs.has(h.id)));
