@@ -297,7 +297,7 @@ footer a { color: var(--accent); }
 </section>
 
 <footer class="wrap">
-  <p>Listings from realestate.co.nz, searched daily at 8pm NZ time. The $900k–$1.5M range is checked against the advertised price; without one, against the realestate.co.nz estimate (grey, “est”); without that, against the council valuation (grey, “CV”). Listings with none of these are left out. Houses must have 2+ bathrooms and 160 m²+ of floor area (the house, not the section); houses whose listing doesn't state these are kept and marked with a red ? in their details. Distance is the driving distance by road to the nearest morning (to-school) stop, and Kristin School counts as a stop. Dashed route lines are the non-stop run to school. Suburb arrows compare the median sale price of the last 12 months with the 12 months before (4+ bedroom sales when there are enough, otherwise all sales); within ±2% counts as flat. Commute times to AIA (74 Taharoto Road) are for a weekday leaving home at 8am: driving from <a href="https://project-osrm.org" target="_blank" rel="noopener">OSRM</a> (OpenStreetMap roads), public transport from <a href="https://transitous.org/sources/" target="_blank" rel="noopener">Transitous</a> using Auckland Transport timetables. Sold prices come from realestate.co.nz once the sale is public, usually a few weeks after it sells. Favourites and trashed houses are saved on this device. Trashed houses stay greyed out for 30 days, like sold ones, then disappear; the Trashed chip hides them straight away.</p>
+  <p>Listings from realestate.co.nz, searched daily at 8pm NZ time. The $900k–$1.5M range is checked against the advertised price; without one, against the realestate.co.nz estimate (grey, “est”); without that, against the council valuation (grey, “CV”). Listings with none of these are left out. Houses must have 2+ bathrooms and 160 m²+ of floor area (the house, not the section); houses whose listing doesn't state these are kept and marked with a red ? in their details. Distance is the driving distance by road to the nearest morning (to-school) stop, and Kristin School counts as a stop. Dashed route lines are the non-stop run to school. Suburb arrows compare the median sale price of the last 12 months with the 12 months before (4+ bedroom sales when there are enough, otherwise all sales); within ±2% counts as flat. Commute to AIA (74 Taharoto Road): driving time without traffic from <a href="https://project-osrm.org" target="_blank" rel="noopener">OSRM</a> (OpenStreetMap roads); public transport for a weekday leaving home at 8am, looked up when you open a house, from <a href="https://transitous.org/sources/" target="_blank" rel="noopener">Transitous</a> using Auckland Transport timetables. Site code and contact: <a href="https://github.com/robertocaldas/house-hunt" target="_blank" rel="noopener">github.com/robertocaldas/house-hunt</a>. Sold prices come from realestate.co.nz once the sale is public, usually a few weeks after it sells. Favourites and trashed houses are saved on this device. Trashed houses stay greyed out for 30 days, like sold ones, then disappear; the Trashed chip hides them straight away.</p>
 </footer>
 
 <div class="scrim" id="scrim" hidden></div>
@@ -636,15 +636,57 @@ footer a { color: var(--accent); }
     g.querySelector('.next').onclick = () => strip.scrollBy({ left: strip.clientWidth, behavior: 'smooth' });
   }
 
+  // ---------- commute to AIA ----------
+  const AIA = [-36.785488, 174.7554118];  // AIA House, 74 Taharoto Road, Smales Farm
+  const PT_KEY = 'kbh:pt:';
+  function nextTuesday8am() {
+    // Next Tuesday after today in NZ, 8:00am NZ time, as an ISO string with the NZ offset.
+    const fmt = (d) => new Intl.DateTimeFormat('en-CA', { timeZone: NZTZ, year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
+    let d = new Date(Date.now() + 864e5);
+    while (new Intl.DateTimeFormat('en-NZ', { timeZone: NZTZ, weekday: 'short' }).format(d) !== 'Tue') d = new Date(d.getTime() + 864e5);
+    const day = fmt(d);
+    const off = new Intl.DateTimeFormat('en-NZ', { timeZone: NZTZ, timeZoneName: 'longOffset' }).formatToParts(new Date(day + 'T08:00:00Z')).find((p) => p.type === 'timeZoneName').value.replace('GMT', '') || '+13:00';
+    return { day, iso: `${day}T08:00:00${off}` };
+  }
+  async function transitToAia(h) {
+    const dep = nextTuesday8am();
+    const key = PT_KEY + h.id;
+    const cached = store.get(key, null);
+    if (cached && cached.day === dep.day && cached.k === `${h.lat},${h.lng}`) return cached.r;
+    const q = new URLSearchParams({ fromPlace: `${h.lat},${h.lng}`, toPlace: `${AIA[0]},${AIA[1]}`, time: dep.iso, arriveBy: 'false',
+      maxPreTransitTime: '1800', maxPostTransitTime: '1800' });
+    const res = await fetch(`https://api.transitous.org/api/v1/plan?${q}`);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const j = await res.json();
+    const its = (j.itineraries || []).map((it) => ({
+      end: new Date(it.endTime), transfers: it.transfers || 0,
+      routes: it.legs.filter((l) => l.mode !== 'WALK').map((l) => l.routeShortName || l.displayName || l.mode),
+      walk: Math.round(it.legs.filter((l) => l.mode === 'WALK').reduce((a, l) => a + (l.duration || 0), 0) / 60),
+    }));
+    let r = null;
+    if (its.length) {
+      const first = Math.min(...its.map((i) => i.end));
+      const best = its.filter((i) => i.end - first <= 180e3).sort((a, b) => a.transfers - b.transfers || a.end - b.end)[0];
+      r = { min: Math.round((best.end - new Date(dep.iso)) / 6e4), arr: timeFmt.format(best.end), transfers: best.transfers, routes: best.routes, walk: best.walk };
+    }
+    store.set(key, { day: dep.day, k: `${h.lat},${h.lng}`, r });
+    return r;
+  }
+  function ptLine(r) {
+    if (!r) return '<span class="muted">No public transport route found for an 8am start</span>';
+    const ch = r.transfers === 0 ? 'no changes' : r.transfers === 1 ? '1 change' : `${r.transfers} changes`;
+    return `<b>${r.min} min</b> by public transport · arrive ${esc(r.arr)} · ${esc(r.routes.join(' → '))} · ${ch}, ${r.walk} min walking`;
+  }
+  function loadTransit(h) {
+    const el = $('d-pt'); if (!el) return;
+    el.innerHTML = '<span class="muted">Checking public transport…</span>';
+    transitToAia(h).then((r) => { if (current === h.id && $('d-pt')) $('d-pt').innerHTML = ptLine(r); })
+      .catch(() => { if (current === h.id && $('d-pt')) $('d-pt').innerHTML = '<span class="muted">Couldn’t load public transport times right now. Close and reopen to try again.</span>'; });
+  }
   function commuteHtml(h) {
     const lines = [];
-    if (h.trafficMin) lines.push(`<b>${h.trafficMin} min</b> drive in 8am traffic · ${h.trafficKm} km`);
-    else if (h.driveMin) lines.push(`<b>${h.driveMin} min</b> drive without traffic · ${h.driveKm} km <span class="muted" style="font-weight:400">(8am traffic time not set up yet)</span>`);
-    if (h.pt) {
-      const ch = h.pt.transfers === 0 ? 'no changes' : h.pt.transfers === 1 ? '1 change' : `${h.pt.transfers} changes`;
-      lines.push(`<b>${h.pt.min} min</b> by public transport · arrive ${esc(h.pt.arr)} · ${esc(h.pt.routes.join(' → '))} · ${ch}, ${h.pt.walk} min walking`);
-    } else if (h.pt === null) lines.push('<span class="muted">No public transport route found</span>');
-    else if (h.driveMin || h.trafficMin) lines.push('<span class="muted">Public transport time coming in the next update</span>');
+    if (h.driveMin) lines.push(`<b>${h.driveMin} min</b> drive without traffic · ${h.driveKm} km`);
+    lines.push('<span id="d-pt"></span>');
     return lines.join('<br>');
   }
   function fact(label, value, wide) { return value ? `<div class="fact${wide ? ' wide' : ''}"><dt>${label}</dt><dd>${value}</dd></div>` : ''; }
@@ -712,7 +754,7 @@ footer a { color: var(--accent); }
   function openSheet(id, pan) {
     const h = byId.get(id); if (!h) return;
     current = id; lastFocus = document.activeElement;
-    fillSheet(h); gallery(h);
+    fillSheet(h); gallery(h); loadTransit(h);
     $('scrim').hidden = false; $('sheet').hidden = false;
     requestAnimationFrame(() => { $('scrim').classList.add('open'); $('sheet').classList.add('open'); });
     $('sheet').querySelector('.sheet-scroll').scrollTop = 0;
@@ -735,14 +777,14 @@ footer a { color: var(--accent); }
     const id = current; if (!id) return;
     if (favs.has(id)) favs.delete(id); else { favs.add(id); delete trash[id]; }
     store.set(FAV_KEY, [...favs]); store.set(TRASH_KEY, trash);
-    fillSheet(byId.get(id));
+    fillSheet(byId.get(id)); loadTransit(byId.get(id));
     renderAll();
   };
   $('d-trash').onclick = () => {
     const id = current; if (!id) return;
     if (trash[id]) delete trash[id]; else { trash[id] = nzToday(); favs.delete(id); }
     store.set(TRASH_KEY, trash); store.set(FAV_KEY, [...favs]);
-    fillSheet(byId.get(id));
+    fillSheet(byId.get(id)); loadTransit(byId.get(id));
     renderAll();
     toast(trash[id] ? 'Trashed. Tap the bin again to undo.' : 'Taken out of the trash');
   };

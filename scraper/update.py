@@ -306,35 +306,10 @@ def road_distances(cands, ustops, cache):
 
 
 # ---------------------------------------------------------------- commute to AIA, Smales Farm
+# Public transport times are looked up by the site when a house's box is opened (Transitous),
+# so the nightly job only adds the driving time.
 
 AIA = (-36.785488, 174.7554118)   # AIA House, 74 Taharoto Road, Smales Farm, Takapuna
-COMMUTE_HOUR = 8
-TOMTOM = "https://api.tomtom.com/routing/1/calculateRoute/"
-TRANSITOUS = "https://api.transitous.org/api/v1/plan"
-APP_UA = "kristin-bus-homes/1.0 (+https://github.com/robertocaldas/house-hunt)"
-PT_DAILY_CAP = 250         # Transitous asks heavy users to get in touch above ~720 requests a day
-TRAFFIC_DAILY_CAP = 600    # TomTom free tier: 20,000 routing requests a month
-
-
-def commute_departure(now):
-    """Next Tuesday at 8:00am NZ: a typical weekday, always in the future."""
-    d = now.date() + dt.timedelta(days=1)
-    while d.weekday() != 1:
-        d += dt.timedelta(days=1)
-    return dt.datetime(d.year, d.month, d.day, COMMUTE_HOUR, 0, tzinfo=NZ)
-
-
-def ua_json(url, tries=3):
-    last = None
-    for i in range(tries):
-        try:
-            req = urllib.request.Request(url, headers={"User-Agent": APP_UA, "Accept": "application/json"})
-            with urllib.request.urlopen(req, timeout=60) as r:
-                return json.loads(r.read().decode("utf-8"))
-        except Exception as e:  # noqa: BLE001
-            last = e
-            time.sleep(3 * (i + 1))
-    raise RuntimeError(f"GET failed {url.split('?')[0]}: {last}")
 
 
 def osrm_to_aia(points):
@@ -352,55 +327,12 @@ def osrm_to_aia(points):
     return out
 
 
-def tomtom_to_aia(lat, lng, depart, key):
-    """Driving time leaving at `depart`, using TomTom's typical traffic for that time."""
-    q = urllib.parse.urlencode({"key": key, "departAt": depart.isoformat(), "traffic": "true",
-                                "travelMode": "car", "routeType": "fastest", "computeTravelTimeFor": "all"})
-    j = ua_json(f"{TOMTOM}{lat:.6f},{lng:.6f}:{AIA[0]:.6f},{AIA[1]:.6f}/json?{q}")
-    sm = j["routes"][0]["summary"]
-    secs = sm.get("historicTrafficTravelTimeInSeconds") or sm["travelTimeInSeconds"]
-    return round(sm["lengthInMeters"] / 1000, 1), round(secs / 60)
-
-
-def transit_to_aia(lat, lng, depart):
-    """Public transport leaving home at `depart`: the earliest arrival, preferring fewer changes."""
-    q = urllib.parse.urlencode({"fromPlace": f"{lat:.6f},{lng:.6f}", "toPlace": f"{AIA[0]:.6f},{AIA[1]:.6f}",
-                                "time": depart.isoformat(), "arriveBy": "false",
-                                # allow up to 30 min walking to the first stop and from the last one (default 15)
-                                "maxPreTransitTime": 1800, "maxPostTransitTime": 1800})
-    j = ua_json(f"{TRANSITOUS}?{q}")
-    its = []
-    for it in j.get("itineraries") or []:
-        end = dt.datetime.fromisoformat(it["endTime"].replace("Z", "+00:00"))
-        legs = it.get("legs") or []
-        its.append({
-            "end": end,
-            "transfers": it.get("transfers", 0),
-            "routes": [l.get("routeShortName") or l.get("displayName") or l["mode"].title()
-                       for l in legs if l.get("mode") != "WALK"],
-            "walk": round(sum(l.get("duration", 0) for l in legs if l.get("mode") == "WALK") / 60),
-        })
-    if not its:
-        return {"none": True, "v": 2}
-    first = min(i["end"] for i in its)
-    best = min((i for i in its if (i["end"] - first).total_seconds() <= 180), key=lambda i: (i["transfers"], i["end"]))
-    return {"min": round((best["end"] - depart).total_seconds() / 60),
-            "arr": best["end"].astimezone(NZ).strftime("%H:%M"),
-            "transfers": best["transfers"], "routes": best["routes"], "walk": best["walk"]}
-
-
 def update_commutes(recs, cache, now):
-    """Fill cache[lid] with drive and public transport times to AIA for each house in recs."""
-    depart = commute_departure(now)
-    meta = cache.setdefault("_meta", {})
-    today = now.date().isoformat()
-    if meta.get("day") != today:
-        meta.update(day=today, pt=0, tt=0)
+    """Fill cache[lid]["drive"] = [km, min] for each house in recs."""
     for lid, rec in recs.items():
         k = f"{rec['lat']:.5f},{rec['lng']:.5f}"
         if (cache.get(lid) or {}).get("k") != k:
             cache[lid] = {"k": k}
-
     need = [lid for lid in recs if "drive" not in cache[lid]]
     for i in range(0, len(need), 80):
         chunk = need[i:i + 80]
@@ -412,47 +344,10 @@ def update_commutes(recs, cache, now):
             print("AIA drive (OSRM) failed:", e, file=sys.stderr)
         time.sleep(1.1)
 
-    key = os.environ.get("TOMTOM_API_KEY", "").strip()
-    if key:
-        need = [lid for lid in recs if "traffic" not in cache[lid]]
-        for lid in need:
-            if meta["tt"] >= TRAFFIC_DAILY_CAP:
-                break
-            try:
-                km, mins = tomtom_to_aia(recs[lid]["lat"], recs[lid]["lng"], depart, key)
-                cache[lid]["traffic"] = [km, mins, depart.date().isoformat()]
-            except Exception as e:  # noqa: BLE001
-                print("AIA traffic (TomTom) failed", lid, e, file=sys.stderr)
-            meta["tt"] += 1
-            time.sleep(0.25)
-
-    need = [lid for lid in recs if "pt" not in cache[lid]
-            or (cache[lid]["pt"].get("none") and cache[lid]["pt"].get("v") != 2)]  # retry with longer walks
-    print(f"AIA commute: {len(need)} houses need public transport times")
-    for lid in need:
-        if meta["pt"] >= PT_DAILY_CAP:
-            print("public transport: daily cap reached; continues next run")
-            break
-        try:
-            cache[lid]["pt"] = transit_to_aia(recs[lid]["lat"], recs[lid]["lng"], depart)
-            cache[lid]["pt"]["date"] = depart.date().isoformat()
-        except Exception as e:  # noqa: BLE001
-            print("AIA public transport (Transitous) failed", lid, e, file=sys.stderr)
-        meta["pt"] += 1
-        time.sleep(1.0)
-
 
 def commute_fields(c):
     """Compact per-house commute data for houses.json."""
-    out = {}
-    if c.get("drive"):
-        out["driveKm"], out["driveMin"] = c["drive"]
-    if c.get("traffic"):
-        out["trafficKm"], out["trafficMin"] = c["traffic"][0], c["traffic"][1]
-    pt = c.get("pt")
-    if pt:
-        out["pt"] = None if pt.get("none") else {k: pt[k] for k in ("min", "arr", "transfers", "routes", "walk")}
-    return out
+    return {"driveKm": c["drive"][0], "driveMin": c["drive"][1]} if c.get("drive") else {}
 
 
 # ---------------------------------------------------------------- sold prices
@@ -897,7 +792,8 @@ def main():
         print("AIA commute skipped:", e, file=sys.stderr)
     for lid, rec in current.items():
         rec.update(commute_fields(commute.get(lid) or {}))
-    save("commute.json", {k: v for k, v in commute.items() if k == "_meta" or k in near})
+    save("commute.json", {k: {"k": v["k"], "drive": v["drive"]} for k, v in commute.items()
+                           if k in near and v.get("drive")})
     sold = load("sold.json", {})
     left = [lid for lid in known if lid not in current]
     check_sold(left, sold, today)

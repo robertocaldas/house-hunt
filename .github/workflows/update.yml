@@ -52,7 +52,6 @@ jobs:
         id: search
         env:
           EVENT: ${{ github.event_name }}
-          TOMTOM_API_KEY: ${{ secrets.TOMTOM_API_KEY }}  # optional: 8am traffic times to AIA
         run: python scraper/update.py
 
       - name: Commit results
