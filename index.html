@@ -92,6 +92,14 @@ h1 { font: 700 22px/1.1 var(--display); letter-spacing: -.01em; margin: 0; text-
 }
 .chip[aria-pressed="false"] { opacity: .45; }
 .chip b { font-weight: 700; }
+.chip.filter { gap: 6px; }
+.chip b:empty { display: none; }
+.chip.filter[aria-pressed="false"] { opacity: 1; }
+.chip.filter[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.chip.filter svg { width: 14px; height: 14px; flex: none; fill: none; stroke: currentColor; stroke-width: 2; }
+.chip.filter.busy b { animation: pulse 1s ease-in-out infinite alternate; }
+@keyframes pulse { to { opacity: .35; } }
+.chip-sep { width: 1px; align-self: stretch; background: var(--line); margin: 3px 2px; }
 .dot { width: 10px; height: 10px; border-radius: 50%; flex: none; box-shadow: 0 0 0 1.5px var(--surface), 0 0 0 2.5px color-mix(in srgb, var(--ink) 18%, transparent); }
 .dot.new { background: var(--new); } .dot.old { background: var(--old); } .dot.fav { background: var(--fav); } .dot.gone, .dot.trash { background: var(--gone); }
 .bin { width: 14px; height: 14px; flex: none; stroke: var(--muted); stroke-width: 2; fill: none; display: block; }
@@ -260,6 +268,8 @@ footer a { color: var(--accent); }
       <span class="stamp" id="stamp">Loading listings…</span>
     </div>
     <div class="chips" id="chips" role="group" aria-label="Show on map and list">
+      <button class="chip filter" id="f-aia" aria-pressed="false" title="Only houses with a drive (no traffic) or a public transport trip to AIA, Smales Farm, of 40 minutes or less"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2" stroke-linecap="round" stroke-linejoin="round"/></svg>≤ 40 min to AIA <b id="c-aia"></b></button>
+      <span class="chip-sep" aria-hidden="true"></span>
       <button class="chip" data-k="new" aria-pressed="true"><span class="dot new"></span>New <b id="c-new">–</b></button>
       <button class="chip" data-k="old" aria-pressed="true"><span class="dot old"></span>Seen before <b id="c-old">–</b></button>
       <button class="chip" data-k="fav" aria-pressed="true"><span class="dot fav"></span>Favourites <b id="c-fav">–</b></button>
@@ -297,7 +307,7 @@ footer a { color: var(--accent); }
 </section>
 
 <footer class="wrap">
-  <p>Listings from realestate.co.nz, searched daily at 8pm NZ time. The $900k–$1.5M range is checked against the advertised price; without one, against the realestate.co.nz estimate (grey, “est”); without that, against the council valuation (grey, “CV”). Listings with none of these are left out. Houses must have 2+ bathrooms and 160 m²+ of floor area (the house, not the section); houses whose listing doesn't state these are kept and marked with a red ? in their details. Distance is the driving distance by road to the nearest morning (to-school) stop, and Kristin School counts as a stop. Dashed route lines are the non-stop run to school. Suburb arrows compare the median sale price of the last 12 months with the 12 months before (4+ bedroom sales when there are enough, otherwise all sales); within ±2% counts as flat. Commute to AIA (74 Taharoto Road): driving time without traffic from <a href="https://project-osrm.org" target="_blank" rel="noopener">OSRM</a> (OpenStreetMap roads); public transport for a weekday leaving home at 8am, looked up when you open a house, from <a href="https://transitous.org/sources/" target="_blank" rel="noopener">Transitous</a> using Auckland Transport timetables. Site code and contact: <a href="https://github.com/robertocaldas/house-hunt" target="_blank" rel="noopener">github.com/robertocaldas/house-hunt</a>. Sold prices come from realestate.co.nz once the sale is public, usually a few weeks after it sells. Favourites and trashed houses are saved on this device. Trashed houses stay greyed out for 30 days, like sold ones, then disappear; the Trashed chip hides them straight away.</p>
+  <p>Listings from realestate.co.nz, searched daily at 8pm NZ time. The $900k–$1.5M range is checked against the advertised price; without one, against the realestate.co.nz estimate (grey, “est”); without that, against the council valuation (grey, “CV”). Listings with none of these are left out. Houses must have 2+ bathrooms and 160 m²+ of floor area (the house, not the section); houses whose listing doesn't state these are kept and marked with a red ? in their details. Distance is the driving distance by road to the nearest morning (to-school) stop, and Kristin School counts as a stop. Dashed route lines are the non-stop run to school. Suburb arrows compare the median sale price of the last 12 months with the 12 months before (4+ bedroom sales when there are enough, otherwise all sales); within ±2% counts as flat. Commute to AIA (74 Taharoto Road): driving time without traffic from <a href="https://project-osrm.org" target="_blank" rel="noopener">OSRM</a> (OpenStreetMap roads); public transport door to door (walking included, wait at home not counted) for the first trips after 8am on a weekday, looked up when you open a house, from <a href="https://transitous.org/sources/" target="_blank" rel="noopener">Transitous</a> using Auckland Transport timetables. “≤ 40 min to AIA” keeps houses where either the drive or the public transport trip takes 40 minutes or less; for houses with a longer drive, public transport is checked in your browser when you turn it on, and houses still being checked stay shown. Site code and contact: <a href="https://github.com/robertocaldas/house-hunt" target="_blank" rel="noopener">github.com/robertocaldas/house-hunt</a>. Sold prices come from realestate.co.nz once the sale is public, usually a few weeks after it sells. Favourites and trashed houses are saved on this device. Trashed houses stay greyed out for 30 days, like sold ones, then disappear; the Trashed chip hides them straight away.</p>
 </footer>
 
 <div class="scrim" id="scrim" hidden></div>
@@ -370,6 +380,11 @@ footer a { color: var(--accent); }
   const daysSince = (d) => Math.round((new Date(nzToday() + 'T12:00:00Z') - new Date(d + 'T12:00:00Z')) / 864e5);
   const addDays = (d, n) => new Date(new Date(d + 'T12:00:00Z').getTime() + n * 864e5).toISOString().slice(0, 10);
   const show = Object.assign({ new: true, old: true, fav: true, gone: true, trash: true }, store.get(SHOW_KEY, {}));
+  const AIA_KEY = 'kbh:aia40', AIA_MAX = 40;  // filter: car (no traffic) OR public transport to AIA within 40 min
+  let aiaOn = !!store.get(AIA_KEY, false);
+  const ptMem = new Map();    // id -> public transport result (null = no route found)
+  const ptFailed = new Set(); // lookups that errored this visit (kept shown)
+  let ptRun = null;           // background public transport checks while the filter is on
 
   let data = { houses: [] }, houses = [], byId = new Map(), photos = null, photosP = null, trends = {};
   const trendOf = (h) => trends[h.subSlug] || null;
@@ -396,7 +411,15 @@ footer a { color: var(--accent); }
 
   const status = (h) => trash[h.id] ? 'trash' : favs.has(h.id) ? 'fav' : h.removed ? 'gone' : h.first === data.updated ? 'new' : 'old';
   const kind = (h) => h.removed ? 'gone' : h.first === data.updated ? 'new' : 'old';
-  const visible = (h) => show[status(h)];
+  // 'car' / 'pt' = within 40 min; 'no' = both slower (or no route); 'pending' = not checked yet (kept)
+  function aiaFit(h) {
+    if (h.driveMin && h.driveMin <= AIA_MAX) return 'car';
+    if (!ptMem.has(h.id)) return 'pending';
+    const r = ptMem.get(h.id);
+    return r && r.dur <= AIA_MAX ? 'pt' : 'no';
+  }
+  const aiaOk = (h) => aiaFit(h) !== 'no';
+  const visible = (h) => show[status(h)] && (!aiaOn || aiaOk(h));
   // Estimates far outside the search range usually come from a mismatched property record (a lot or a whole site).
   // Price basis: advertised price, else realestate.co.nz estimate, else council valuation (CV).
   const basis = (h) => h.priceNum ? 'price' : h.est ? 'est' : h.cv ? 'cv' : null;
@@ -543,12 +566,27 @@ footer a { color: var(--accent); }
   // ---------- header ----------
   function renderCounts() {
     const c = { new: 0, old: 0, fav: 0, gone: 0, trash: 0 };
-    houses.forEach((h) => { c[status(h)]++; });
+    let fit = 0;
+    houses.forEach((h) => { const ok = aiaOk(h); if (ok) fit++; if (ok || !aiaOn) c[status(h)]++; });
     Object.keys(c).forEach((k) => { $('c-' + k).textContent = c[k].toLocaleString('en-NZ'); });
-    document.querySelectorAll('.chip').forEach((b) => b.setAttribute('aria-pressed', String(!!show[b.dataset.k])));
+    document.querySelectorAll('.chip[data-k]').forEach((b) => b.setAttribute('aria-pressed', String(!!show[b.dataset.k])));
+    const f = $('f-aia');
+    f.setAttribute('aria-pressed', String(aiaOn));
+    $('c-aia').textContent = aiaOn ? fit.toLocaleString('en-NZ') : '';
+    const busy = aiaOn && !!ptRun;
+    f.classList.toggle('busy', busy);
+    f.setAttribute('aria-busy', String(busy));
+    $('list-sub').textContent = LIST_SUB + (aiaOn ? ` · ≤ ${AIA_MAX} min to AIA by car or public transport` + (busy ? ' (checking public transport…)' : '') : '');
   }
+  const LIST_SUB = $('list-sub').textContent;
+  $('f-aia').addEventListener('click', () => {
+    aiaOn = !aiaOn;
+    store.set(AIA_KEY, aiaOn);
+    checkTransitAll();
+    renderAll();
+  });
   $('chips').addEventListener('click', (e) => {
-    const b = e.target.closest('.chip'); if (!b) return;
+    const b = e.target.closest('.chip[data-k]'); if (!b) return;
     show[b.dataset.k] = !show[b.dataset.k];
     store.set(SHOW_KEY, show);
     renderAll();
@@ -648,39 +686,73 @@ footer a { color: var(--accent); }
     const off = new Intl.DateTimeFormat('en-NZ', { timeZone: NZTZ, timeZoneName: 'longOffset' }).formatToParts(new Date(day + 'T08:00:00Z')).find((p) => p.type === 'timeZoneName').value.replace('GMT', '') || '+13:00';
     return { day, iso: `${day}T08:00:00${off}` };
   }
+  const PT_V = 2;  // cache version: 2 = door-to-door trip time (dur) + leave time
+  function readPtCache(h, dep) {
+    const c = store.get(PT_KEY + h.id, null);
+    if (c && c.v === PT_V && c.day === dep.day && c.k === `${h.lat},${h.lng}`) { ptMem.set(h.id, c.r); return c; }
+    return null;
+  }
   async function transitToAia(h) {
     const dep = nextTuesday8am();
-    const key = PT_KEY + h.id;
-    const cached = store.get(key, null);
-    if (cached && cached.day === dep.day && cached.k === `${h.lat},${h.lng}`) return cached.r;
+    const cached = readPtCache(h, dep);
+    if (cached) return cached.r;
     const q = new URLSearchParams({ fromPlace: `${h.lat},${h.lng}`, toPlace: `${AIA[0]},${AIA[1]}`, time: dep.iso, arriveBy: 'false',
       maxPreTransitTime: '1800', maxPostTransitTime: '1800' });
     const res = await fetch(`https://api.transitous.org/api/v1/plan?${q}`);
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const j = await res.json();
-    const its = (j.itineraries || []).map((it) => ({
-      end: new Date(it.endTime), transfers: it.transfers || 0,
-      routes: it.legs.filter((l) => l.mode !== 'WALK').map((l) => l.routeShortName || l.displayName || l.mode),
-      walk: Math.round(it.legs.filter((l) => l.mode === 'WALK').reduce((a, l) => a + (l.duration || 0), 0) / 60),
-    }));
+    const its = (j.itineraries || []).map((it) => {
+      const legs = it.legs || [];
+      const end = new Date(it.endTime);
+      // Door to door: leave home just in time for the first vehicle (walking counted, waiting at home not).
+      const ti = legs.findIndex((l) => l.mode !== 'WALK');
+      const pre = ti > 0 ? legs.slice(0, ti).reduce((a, l) => a + (l.duration || 0), 0) : 0;
+      const start = ti >= 0 ? new Date(new Date(legs[ti].startTime).getTime() - pre * 1000) : new Date(it.startTime);
+      return {
+        end, start, transfers: it.transfers || 0,
+        routes: legs.filter((l) => l.mode !== 'WALK').map((l) => l.routeShortName || l.displayName || l.mode),
+        walk: Math.round(legs.filter((l) => l.mode === 'WALK').reduce((a, l) => a + (l.duration || 0), 0) / 60),
+      };
+    });
     let r = null;
     if (its.length) {
       const first = Math.min(...its.map((i) => i.end));
       const best = its.filter((i) => i.end - first <= 180e3).sort((a, b) => a.transfers - b.transfers || a.end - b.end)[0];
-      r = { min: Math.round((best.end - new Date(dep.iso)) / 6e4), arr: timeFmt.format(best.end), transfers: best.transfers, routes: best.routes, walk: best.walk };
+      r = { dur: Math.round((best.end - best.start) / 6e4), leave: timeFmt.format(best.start), arr: timeFmt.format(best.end),
+        transfers: best.transfers, routes: best.routes, walk: best.walk };
     }
-    store.set(key, { day: dep.day, k: `${h.lat},${h.lng}`, r });
+    store.set(PT_KEY + h.id, { v: PT_V, day: dep.day, k: `${h.lat},${h.lng}`, r });
+    ptMem.set(h.id, r);
     return r;
   }
   function ptLine(r) {
     if (!r) return '<span class="muted">No public transport route found for an 8am start</span>';
     const ch = r.transfers === 0 ? 'no changes' : r.transfers === 1 ? '1 change' : `${r.transfers} changes`;
-    return `<b>${r.min} min</b> by public transport · arrive ${esc(r.arr)} · ${esc(r.routes.join(' → '))} · ${ch}, ${r.walk} min walking`;
+    return `<b>${r.dur} min</b> by public transport · leave ${esc(r.leave)}, arrive ${esc(r.arr)} · ${esc(r.routes.join(' → ') || 'walk')} · ${ch}, ${r.walk} min walking`;
+  }
+  // Filter on: look up public transport for houses whose drive alone doesn't qualify (2 at a time, cached weekly).
+  const needsPt = (h) => !(h.driveMin && h.driveMin <= AIA_MAX) && !ptMem.has(h.id) && !ptFailed.has(h.id);
+  let renderT = null;
+  const scheduleRender = () => { clearTimeout(renderT); renderT = setTimeout(renderAll, 250); };
+  function checkTransitAll() {
+    if (!aiaOn || ptRun) return;
+    const dep = nextTuesday8am();
+    const todo = houses.filter(needsPt).filter((h) => !readPtCache(h, dep));
+    if (!todo.length) return;
+    let i = 0;
+    const worker = async () => {
+      while (aiaOn && i < todo.length) {
+        const h = todo[i++];
+        try { await transitToAia(h); } catch (e) { ptFailed.add(h.id); }
+        scheduleRender();
+      }
+    };
+    ptRun = Promise.all([worker(), worker()]).then(() => { ptRun = null; scheduleRender(); });
   }
   function loadTransit(h) {
     const el = $('d-pt'); if (!el) return;
     el.innerHTML = '<span class="muted">Checking public transport…</span>';
-    transitToAia(h).then((r) => { if (current === h.id && $('d-pt')) $('d-pt').innerHTML = ptLine(r); })
+    transitToAia(h).then((r) => { if (current === h.id && $('d-pt')) $('d-pt').innerHTML = ptLine(r); if (aiaOn) scheduleRender(); })
       .catch(() => { if (current === h.id && $('d-pt')) $('d-pt').innerHTML = '<span class="muted">Couldn’t load public transport times right now. Close and reopen to try again.</span>'; });
   }
   function commuteHtml(h) {
@@ -848,6 +920,8 @@ footer a { color: var(--accent); }
     houses = houses.filter((h) => !(trash[h.id] && daysSince(trash[h.id]) > TRASH_DAYS));
     byId = new Map(houses.map((h) => [h.id, h]));
     for (const id of [...favs]) if (!byId.has(id)) favs.delete(id);
+    { const dep = nextTuesday8am(); houses.forEach((h) => { if (needsPt(h)) readPtCache(h, dep); }); }
+    checkTransitAll();
     $('stamp').textContent = d.updated
       ? `Updated ${dateFmt.format(new Date(d.updated + 'T20:00:00+13:00'))} · ${d.active.toLocaleString('en-NZ')} for sale`
       : 'First search runs tonight at 8pm';
