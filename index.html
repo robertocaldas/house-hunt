@@ -923,7 +923,7 @@ footer a { color: var(--accent); }
     { const dep = nextTuesday8am(); houses.forEach((h) => { if (needsPt(h)) readPtCache(h, dep); }); }
     checkTransitAll();
     $('stamp').textContent = d.updated
-      ? `Updated ${dateFmt.format(new Date(d.updated + 'T20:00:00+13:00'))} · ${d.active.toLocaleString('en-NZ')} for sale`
+      ? `Last updated at: ${d.updatedAt ? when(d.updatedAt) : dateFmt.format(new Date(d.updated + 'T20:00:00+13:00'))} · ${d.active.toLocaleString('en-NZ')} for sale`
       : 'First search runs tonight at 8pm';
     renderAll();
     const m = location.hash.match(/^#h(\d+)$/);
